@@ -2087,23 +2087,22 @@
 
   var style = document.createElement('style');
   style.textContent =
-    '#sb-news{padding:32px 0;font-family:Helvetica,Arial,sans-serif;max-width:1000px;margin:0 auto}'
-    +'#sb-news h2{font-size:22px;font-weight:700;margin:0 0 20px;letter-spacing:.5px}'
-    +'#sb-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:20px}'
-    +'.sb-card{background:#fff;border:1px solid #e8e8e8;border-radius:8px;overflow:hidden;display:flex;flex-direction:column;transition:box-shadow .2s,transform .2s}'
-    +'.sb-card:hover{box-shadow:0 6px 24px rgba(0,0,0,.12);transform:translateY(-2px)}'
-    +'.sb-card-top{height:6px;background:#222}'
-    +'.sb-card-body{padding:18px 20px 20px;flex:1;display:flex;flex-direction:column}'
-    +'.sb-date{font-size:11px;color:#999;margin-bottom:10px;letter-spacing:.3px}'
-    +'.sb-title{font-size:15px;font-weight:700;color:#111;line-height:1.4;margin-bottom:10px}'
-    +'.sb-excerpt{font-size:13px;color:#666;line-height:1.6;flex:1;margin-bottom:14px}'
-    +'.sb-link{font-size:12px;font-weight:600;color:#111;text-decoration:none;letter-spacing:.5px;text-transform:uppercase;border-bottom:1px solid #111;padding-bottom:1px;align-self:flex-start}'
-    +'.sb-link:hover{color:#555;border-color:#555}';
+    '#sb-news{max-width:940px;margin:20px auto;font-family:Helvetica,Arial,sans-serif}'
+    +'.sb-card{display:flex;width:100%;height:340px;border:1px solid rgba(209,202,201,0.75);overflow:hidden;margin-bottom:32px;box-sizing:border-box}'
+    +'.sb-img{flex:0 0 48%;background:#d8d8d8;display:flex;align-items:center;justify-content:center;overflow:hidden}'
+    +'.sb-img img{width:100%;height:100%;object-fit:cover}'
+    +'.sb-img-ph{width:100%;height:100%;background:linear-gradient(135deg,#e0e0e0 0%,#c8c8c8 100%)}'
+    +'.sb-text{flex:1;padding:36px;display:flex;flex-direction:column;justify-content:center;box-sizing:border-box}'
+    +'.sb-title-link{text-decoration:none}'
+    +'.sb-title{font-size:28px;font-weight:700;color:#000;line-height:1.3;margin-bottom:16px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}'
+    +'.sb-title-link:hover .sb-title{color:#555}'
+    +'.sb-desc{font-size:16px;color:#333;line-height:1.5;flex:1;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:16px}'
+    +'.sb-meta{font-size:12px;color:#666}';
   document.head.appendChild(style);
 
   var div = document.createElement('div');
   div.id = 'sb-news';
-  div.innerHTML = '<h2>Latest News</h2><div id="sb-cards"><p style="color:#999">로딩 중...</p></div>';
+  div.innerHTML = '<p style="color:#999;padding:20px 0">로딩 중...</p>';
 
   function insert() {
     var feed = document.querySelector('[data-hook="feed-page-root"]');
@@ -2114,30 +2113,33 @@
 
   async function loadPosts() {
     try {
-      var res = await fetch(SUPABASE_URL + '/rest/v1/posts?select=title,slug,content,created_at&published=eq.true&order=created_at.desc', {
+      var res = await fetch(SUPABASE_URL + '/rest/v1/posts?select=title,slug,content,created_at,image_url&published=eq.true&order=created_at.desc', {
         headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON }
       });
       var posts = await res.json();
-      var cards = div.querySelector('#sb-cards');
-      if (!posts || !posts.length) {
-        cards.innerHTML = '<p style="color:#999">등록된 포스트가 없습니다.</p>';
+      if (!Array.isArray(posts) || !posts.length) {
+        div.innerHTML = '';
         return;
       }
-      cards.innerHTML = posts.map(function(p) {
-        var excerpt = (p.content || '').replace(/\n/g,' ').slice(0,100);
-        if ((p.content || '').length > 100) excerpt += '…';
+      div.innerHTML = posts.map(function(p) {
+        var date = new Date(p.created_at).toLocaleDateString('ko-KR', {year:'numeric',month:'long',day:'numeric'});
+        var desc = (p.content || '').replace(/\n/g,' ');
+        var imgHtml = p.image_url
+          ? '<img src="'+p.image_url+'" alt="'+p.title+'" loading="lazy"/>'
+          : '<div class="sb-img-ph"></div>';
         return '<div class="sb-card">'
-          +'<div class="sb-card-top"></div>'
-          +'<div class="sb-card-body">'
-          +'<div class="sb-date">'+p.created_at.slice(0,10)+'</div>'
+          +'<div class="sb-img">'+imgHtml+'</div>'
+          +'<div class="sb-text">'
+          +'<a class="sb-title-link" href="post-viewer.html?slug='+p.slug+'">'
           +'<div class="sb-title">'+p.title+'</div>'
-          +(excerpt?'<div class="sb-excerpt">'+excerpt+'</div>':'')
-          +'<a class="sb-link" href="post-viewer.html?slug='+p.slug+'">Read More</a>'
+          +'</a>'
+          +(desc ? '<div class="sb-desc">'+desc+'</div>' : '')
+          +'<div class="sb-meta">'+date+'</div>'
           +'</div>'
           +'</div>';
       }).join('');
     } catch(e) {
-      div.querySelector('#sb-cards').innerHTML = '<p style="color:#999">포스트를 불러올 수 없습니다.</p>';
+      div.innerHTML = '';
     }
   }
 
