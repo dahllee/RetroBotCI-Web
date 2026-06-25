@@ -2105,9 +2105,9 @@
   div.innerHTML = '<p style="color:#999;padding:20px 0">로딩 중...</p>';
 
   function insert() {
-    var feed = document.querySelector('[data-hook="feed-page-root"]');
-    if (!feed) { setTimeout(insert, 300); return; }
-    feed.parentNode.insertBefore(div, feed.nextSibling);
+    var header = document.querySelector('[data-hook="blog-desktop-header-container"]');
+    if (!header) { setTimeout(insert, 300); return; }
+    header.parentNode.insertBefore(div, header.nextSibling);
     loadPosts();
   }
 
