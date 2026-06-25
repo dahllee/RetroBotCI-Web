@@ -2107,7 +2107,7 @@
   function insert() {
     var feed = document.querySelector('[data-hook="feed-page-root"]');
     if (!feed) { setTimeout(insert, 300); return; }
-    feed.parentNode.insertBefore(div, feed);
+    feed.parentNode.insertBefore(div, feed.nextSibling);
     loadPosts();
   }
 
