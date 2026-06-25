@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PotenDogs News 관리</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Helvetica,Arial,sans-serif;background:#f4f4f4;color:#222}
+#login{display:flex;height:100vh;align-items:center;justify-content:center}
+#login-box{background:#fff;padding:40px;border-radius:12px;width:320px;box-shadow:0 4px 20px rgba(0,0,0,.12)}
+#login-box h1{font-size:20px;margin-bottom:20px}
+#login-box input{width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:15px;margin-bottom:12px}
+#login-box button{width:100%;padding:11px;background:#111;color:#fff;border:none;border-radius:6px;font-size:15px;cursor:pointer}
+#pw-err{color:#e74c3c;font-size:13px;margin-top:8px;display:none}
+#app{display:none;max-width:880px;margin:0 auto;padding:32px 20px}
+.page-title{font-size:24px;font-weight:700;margin-bottom:28px}
+.card{background:#fff;border-radius:10px;padding:24px;margin-bottom:24px;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.card h2{font-size:17px;font-weight:600;margin-bottom:18px;color:#444}
+label{display:block;font-size:13px;color:#666;margin-bottom:5px}
+input[type=text],textarea{width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px;outline:none}
+input[type=text]:focus,textarea:focus{border-color:#555}
+textarea{height:220px;resize:vertical;line-height:1.6}
+.mb{margin-bottom:14px}
+.row{display:flex;gap:12px;margin-bottom:14px}
+.row>*{flex:1}
+.btn{padding:10px 22px;border:none;border-radius:6px;font-size:14px;cursor:pointer}
+.btn-primary{background:#111;color:#fff}
+.btn-primary:hover{background:#333}
+.btn-secondary{background:#888;color:#fff}
+.btn-secondary:hover{background:#666}
+.btn-danger{background:#e74c3c;color:#fff;padding:6px 14px;font-size:13px}
+.btn-edit{background:#3498db;color:#fff;padding:6px 14px;font-size:13px}
+.btn-group{display:flex;gap:8px}
+.post-item{display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-bottom:1px solid #f0f0f0}
+.post-item:last-child{border-bottom:none}
+.post-meta{font-size:12px;color:#999;margin-top:3px}
+.badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:6px}
+.badge-pub{background:#e8f5e9;color:#2e7d32}
+.badge-draft{background:#fce4ec;color:#c62828}
+#msg{padding:11px 14px;border-radius:6px;margin-bottom:14px;display:none;font-size:14px}
+.msg-ok{background:#e8f5e9;color:#2e7d32;display:block!important}
+.msg-err{background:#fce4ec;color:#c62828;display:block!important}
+.check-row{display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:14px}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <div id="login-box">
+    <h1>PotenDogs Admin</h1>
+    <input type="password" id="pw" placeholder="비밀번호" />
+    <button onclick="checkPw()">로그인</button>
+    <p id="pw-err">비밀번호가 틀렸습니다</p>
+  </div>
+</div>
+
+<div id="app">
+  <p class="page-title">PotenDogs News 관리</p>
+
+  <div class="card">
+    <h2 id="form-heading">새 포스트 작성</h2>
+    <div id="msg"></div>
+    <input type="hidden" id="edit-id">
+    <div class="mb">
+      <label>제목</label>
+      <input type="text" id="title" placeholder="포스트 제목을 입력하세요" oninput="autoSlug()">
+    </div>
+    <div class="mb">
+      <label>슬러그 (URL 경로)</label>
+      <input type="text" id="slug" placeholder="post-url-slug">
+    </div>
+    <div class="mb">
+      <label>내용</label>
+      <textarea id="content" placeholder="포스트 내용을 입력하세요..."></textarea>
+    </div>
+    <div class="check-row">
+      <input type="checkbox" id="published" checked>
+      <label for="published" style="margin:0;color:#222">바로 공개</label>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-primary" onclick="savePost()">저장</button>
+      <button class="btn btn-secondary" onclick="resetForm()">취소</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>포스트 목록</h2>
+    <div id="post-list"><p style="color:#999">로딩 중...</p></div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://nkexrreyofgdnfvlkwjj.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5rZXhycmV5b2ZnZG5mdmxrd2pqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MjM4NjIyNSwiZXhwIjoyMDk3OTYyMjI1fQ.juX5-9WlAbIvOdN7QuvfbGNgIqrU_nDPytYnmXUo7XA';
+const ADMIN_PW = 'retrobot2024';
+
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+function checkPw() {
+  if (document.getElementById('pw').value === ADMIN_PW) {
+    document.getElementById('login').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    loadPosts();
+  } else {
+    document.getElementById('pw-err').style.display = 'block';
+  }
+}
+document.getElementById('pw').addEventListener('keydown', e => { if (e.key === 'Enter') checkPw(); });
+
+function autoSlug() {
+  const t = document.getElementById('title').value;
+  document.getElementById('slug').value = t.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '').replace(/-+/g, '-');
+}
+
+function showMsg(text, type) {
+  const el = document.getElementById('msg');
+  el.textContent = text;
+  el.className = type === 'ok' ? 'msg-ok' : 'msg-err';
+}
+
+async function savePost() {
+  const id = document.getElementById('edit-id').value;
+  const title = document.getElementById('title').value.trim();
+  const slug = document.getElementById('slug').value.trim();
+  const content = document.getElementById('content').value.trim();
+  const published = document.getElementById('published').checked;
+  if (!title || !slug) { showMsg('제목과 슬러그는 필수입니다.', 'err'); return; }
+  const data = { title, slug, content, published };
+  const res = id
+    ? await db.from('posts').update(data).eq('id', id)
+    : await db.from('posts').insert(data);
+  if (res.error) { showMsg('오류: ' + res.error.message, 'err'); return; }
+  showMsg(id ? '수정됐습니다.' : '저장됐습니다.', 'ok');
+  resetForm();
+  loadPosts();
+}
+
+function resetForm() {
+  ['edit-id','title','slug','content'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('published').checked = true;
+  document.getElementById('form-heading').textContent = '새 포스트 작성';
+  document.getElementById('msg').className = '';
+}
+
+async function loadPosts() {
+  const { data, error } = await db.from('posts').select('*').order('created_at', { ascending: false });
+  const el = document.getElementById('post-list');
+  if (error || !data?.length) { el.innerHTML = '<p style="color:#999">포스트가 없습니다.</p>'; return; }
+  el.innerHTML = data.map(p => `
+    <div class="post-item">
+      <div>
+        <strong>${p.title}</strong>
+        <span class="badge ${p.published ? 'badge-pub' : 'badge-draft'}">${p.published ? '공개' : '비공개'}</span>
+        <div class="post-meta">${p.created_at.slice(0,10)} &nbsp;·&nbsp; /post-viewer.html?slug=${p.slug}</div>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-edit" onclick='editPost(${JSON.stringify(p).replace(/'/g,"\\'")})'> 수정</button>
+        <button class="btn btn-danger" onclick="deletePost(${p.id})">삭제</button>
+      </div>
+    </div>`).join('');
+}
+
+function editPost(p) {
+  document.getElementById('edit-id').value = p.id;
+  document.getElementById('title').value = p.title;
+  document.getElementById('slug').value = p.slug;
+  document.getElementById('content').value = p.content || '';
+  document.getElementById('published').checked = p.published;
+  document.getElementById('form-heading').textContent = '포스트 수정';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function deletePost(id) {
+  if (!confirm('정말 삭제하시겠어요?')) return;
+  const { error } = await db.from('posts').delete().eq('id', id);
+  if (error) { alert('삭제 실패: ' + error.message); return; }
+  loadPosts();
+}
+</script>
+</body>
+</html>
