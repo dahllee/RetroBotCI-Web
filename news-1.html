@@ -2113,7 +2113,7 @@
 
   async function loadPosts() {
     try {
-      var res = await fetch(SUPABASE_URL + '/rest/v1/posts?select=title,slug,content,created_at,image_url&published=eq.true&order=created_at.desc', {
+      var res = await fetch(SUPABASE_URL + '/rest/v1/posts?select=title,slug,content,created_at&published=eq.true&order=created_at.desc', {
         headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON }
       });
       var posts = await res.json();
@@ -2124,9 +2124,7 @@
       div.innerHTML = posts.map(function(p) {
         var date = new Date(p.created_at).toLocaleDateString('ko-KR', {year:'numeric',month:'long',day:'numeric'});
         var desc = (p.content || '').replace(/\n/g,' ');
-        var imgHtml = p.image_url
-          ? '<img src="'+p.image_url+'" alt="'+p.title+'" loading="lazy"/>'
-          : '<div class="sb-img-ph"></div>';
+        var imgHtml = '<div class="sb-img-ph"></div>';
         return '<div class="sb-card">'
           +'<div class="sb-img">'+imgHtml+'</div>'
           +'<div class="sb-text">'
