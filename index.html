@@ -48,7 +48,7 @@
       font-weight: 600;
       letter-spacing: 0.2em;
       text-transform: uppercase;
-      color: #6366f1;
+      color: #7eb8b0;
       margin-bottom: 14px;
     }
     .section-title {
@@ -62,30 +62,44 @@
 
     /* ── Hero ── */
     #hero {
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-end;
-      padding: 120px 48px 96px;
-      background: linear-gradient(160deg, #0f0f1a 0%, #0a0a0a 60%);
       position: relative;
+      min-height: 100vh;
       overflow: hidden;
+      padding: 0;
+    }
+    .hero-poster {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center top;
     }
     #hero::before {
       content: '';
       position: absolute;
-      top: -120px; right: -120px;
-      width: 640px; height: 640px;
-      background: radial-gradient(circle, rgba(99,102,241,0.10) 0%, transparent 70%);
+      inset: 0;
+      background: linear-gradient(to bottom, rgba(0,0,0,1) 0%, rgba(0,0,0,0.6) 60%, rgba(0,0,0,0.1) 100%);
+      z-index: 1;
       pointer-events: none;
+    }
+    .hero-content {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      min-height: 100vh;
+      padding: 84px 48px 96px;
+      justify-content: flex-start;
     }
     .hero-label {
       font-size: 11px;
       font-weight: 600;
       letter-spacing: 0.2em;
       text-transform: uppercase;
-      color: #6366f1;
-      margin-bottom: 24px;
+      color: #7eb8b0;
+      margin-bottom: 12px;
     }
     .hero-title {
       font-size: clamp(36px, 5.5vw, 76px);
@@ -97,7 +111,7 @@
     }
     .hero-sub {
       font-size: 17px;
-      color: #777;
+      color: #fff;
       max-width: 520px;
       margin-bottom: 48px;
       line-height: 1.75;
@@ -113,10 +127,10 @@
       text-transform: uppercase;
       transition: all 0.2s;
     }
-    .btn-primary { background: #6366f1; color: #fff; }
-    .btn-primary:hover { background: #4f46e5; }
-    .btn-ghost { border: 1px solid #2e2e2e; color: #aaa; }
-    .btn-ghost:hover { border-color: #555; color: #fff; }
+    .btn-primary { background: #7eb8b0; color: #fff; }
+    .btn-primary:hover { background: #5fa09a; }
+    .btn-ghost { border: 1px solid #ef4e23; color: #fff; }
+    .btn-ghost:hover { border-color: #ef4e23; color: #fff; }
 
     /* ── Works ── */
     #works { background: #0a0a0a; }
@@ -128,7 +142,7 @@
     .work-card {
       border-radius: 6px;
       overflow: hidden;
-      background: #111;
+      background: #0a0a0a;
       border: 1px solid #1e1e1e;
       transition: transform 0.25s ease, border-color 0.25s;
     }
@@ -136,10 +150,10 @@
     .work-card img {
       width: 100%;
       aspect-ratio: 16/9;
-      object-fit: cover;
-      background: #161616;
+      object-fit: contain;
+      background: transparent;
     }
-    .work-card-body { padding: 20px 22px 22px; }
+    .work-card-body { padding: 20px 22px 22px; background: #111; }
     .work-card-body h3 { font-size: 16px; font-weight: 600; margin-bottom: 5px; }
     .work-card-body p { font-size: 12px; color: #555; letter-spacing: 0.03em; }
 
@@ -253,11 +267,7 @@
 
 <!-- ── Header ─────────────────────────────────────────────── -->
 <header>
-  <a href="#" class="logo">
-    <img src="post-images/1ab44f_0e1e661e30f947329574fd649b7eb9d8~mv2.png" alt="RetroBot">
-  </a>
   <nav>
-    <a href="potendogs.html">PotenDogs</a>
     <a href="#works">Works</a>
     <a href="news-1.html">News</a>
     <a href="#contact">Contact</a>
@@ -266,12 +276,16 @@
 
 <!-- ── Hero ───────────────────────────────────────────────── -->
 <section id="hero">
-  <p class="hero-label">Korea-based 3D CGI Studio · Est. 2008</p>
-  <h1 class="hero-title">Building world-class IPs,<br>bringing stories to the world.</h1>
-  <p class="hero-sub">RetroBot creates original animated properties for global audiences — from concept and development through production and delivery.</p>
-  <div class="hero-cta">
-    <a href="#works" class="btn btn-primary">Our Works</a>
-    <a href="#contact" class="btn btn-ghost">Get in Touch</a>
+  <img class="hero-poster" src="post-images/SE01_Poster_w_title (1).jpg" alt="">
+  <div class="hero-content">
+    <img src="post-images/Retrobot_Logo_EN_CI.png" alt="RetroBot" style="height:80px;width:auto;margin-bottom:16px;">
+    <p class="hero-label">Where Creative Ideas Become Worlds.</p>
+    <h1 class="hero-title">Building world-class IPs,<br>bringing stories to the world.</h1>
+    <p class="hero-sub">RetroBot CI is a story and character development studio — creating original IPs across animation, publishing, and media for global audiences.</p>
+    <div class="hero-cta">
+      <a href="#works" class="btn btn-primary">Our Works</a>
+      <a href="#contact" class="btn btn-ghost">Get in Touch</a>
+    </div>
   </div>
 </section>
 
@@ -280,42 +294,39 @@
   <p class="section-label">Portfolio</p>
   <h2 class="section-title">Our Works</h2>
   <div class="works-grid">
-    <a href="potendogs.html" style="display:block">
-      <div class="work-card">
-        <img src="post-images/1ab44f_4625affabe454311ac20b377518ad8f7~mv2.png" alt="PotenDogs" loading="lazy">
-        <div class="work-card-body">
-          <h3>PotenDogs</h3>
-          <p>3D CGI Animated Series</p>
-        </div>
-      </div>
-    </a>
     <a href="tobot-daedo-s-heroes.html" style="display:block">
       <div class="work-card">
-        <img src="post-images/1ab44f_4b419292f5e44b74932dbdd9a951760b~mv2.jpg" alt="TOBOT: Daedo's Heroes" loading="lazy">
+        <img src="post-images/SE01_Poster_h_title.png" alt="TOBOT: Daedo's Heroes - Season 1" loading="lazy">
         <div class="work-card-body">
-          <h3>TOBOT: Daedo's Heroes</h3>
+          <h3>TOBOT: Daedo's Heroes - Season 1</h3>
           <p>3D CGI Animated Series</p>
         </div>
       </div>
     </a>
-    <a href="tobot-the-movie.html" style="display:block">
+    <a href="tobot-daedo-s-heroes-2.html" style="display:block">
       <div class="work-card">
-        <img src="post-images/1ab44f_72268d78fd98489180f63063a82ffaf4~mv2.jpg" alt="TOBOT The Movie" loading="lazy">
+        <img src="post-images/S02P03_Poster_width_A_v04_0130_5000.png" alt="TOBOT: Daedo's Heroes - Season 2" loading="lazy">
         <div class="work-card-body">
-          <h3>TOBOT The Movie</h3>
-          <p>Animated Feature Film</p>
-        </div>
-      </div>
-    </a>
-    <a href="tobot.html" style="display:block">
-      <div class="work-card">
-        <img src="post-images/1ab44f_1acfff2a50f74f45a61e724bcdf3175b~mv2.jpg" alt="TOBOT" loading="lazy">
-        <div class="work-card-body">
-          <h3>TOBOT</h3>
+          <h3>TOBOT: Daedo's Heroes - Season 2</h3>
           <p>3D CGI Animated Series</p>
         </div>
       </div>
     </a>
+    <a href="tobot-daedo-s-heroes-3.html" style="display:block">
+      <div class="work-card">
+        <img src="post-images/S03P03_Poster_height_v07.png" alt="TOBOT: Daedo's Heroes - Season 3" loading="lazy">
+        <div class="work-card-body">
+          <h3>TOBOT: Daedo's Heroes - Season 3</h3>
+          <p>3D CGI Animated Series</p>
+        </div>
+      </div>
+    </a>
+    <div class="work-card">
+      <div style="width:100%;aspect-ratio:16/9;background:#161616;display:flex;align-items:center;justify-content:center;font-size:200px;font-weight:900;color:#888;overflow:hidden;">?</div>
+      <div class="work-card-body">
+        <h3>Trash Idol</h3>
+      </div>
+    </div>
   </div>
 </section>
 
