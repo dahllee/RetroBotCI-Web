@@ -94,7 +94,7 @@
       justify-content: flex-start;
     }
     .hero-label {
-      font-size: 11px;
+      font-size: 15.5px;
       font-weight: 600;
       letter-spacing: 0.2em;
       text-transform: uppercase;
@@ -145,6 +145,8 @@
       background: #0a0a0a;
       border: 1px solid #1e1e1e;
       transition: transform 0.25s ease, border-color 0.25s;
+      display: flex;
+      flex-direction: column;
     }
     .work-card:hover { transform: translateY(-4px); border-color: #333; }
     .work-card img {
@@ -153,9 +155,9 @@
       object-fit: contain;
       background: transparent;
     }
-    .work-card-body { padding: 20px 22px 22px; background: #111; }
+    .work-card-body { padding: 20px 22px 22px; background: #111; flex: 1; }
     .work-card-body h3 { font-size: 16px; font-weight: 600; margin-bottom: 5px; }
-    .work-card-body p { font-size: 12px; color: #555; letter-spacing: 0.03em; }
+    .work-card-body p { font-size: 12px; color: #777; letter-spacing: 0.03em; }
 
     /* ── Services ── */
     #services { background: #070707; }
@@ -182,7 +184,7 @@
       margin-bottom: 20px;
     }
     .service-item h3 { font-size: 15px; font-weight: 600; margin-bottom: 10px; letter-spacing: -0.01em; }
-    .service-item p { font-size: 13px; color: #555; line-height: 1.65; }
+    .service-item p { font-size: 13px; color: #777; line-height: 1.65; }
 
     /* ── About ── */
     #about { background: #0a0a0a; }
@@ -192,7 +194,7 @@
       gap: 80px;
       align-items: start;
     }
-    .about-text p {
+    .about-text p:not(.section-label) {
       font-size: 15px;
       color: #777;
       line-height: 1.85;
@@ -232,7 +234,7 @@
     }
     .contact-items { display: flex; flex-direction: column; gap: 20px; }
     .contact-row { font-size: 14px; color: #666; }
-    .contact-row a { color: #6366f1; }
+    .contact-row a { color: #ef4e23; }
     .contact-row a:hover { text-decoration: underline; }
     .contact-row strong { display: block; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #333; margin-bottom: 4px; }
 
@@ -279,7 +281,7 @@
   <img class="hero-poster" src="post-images/SE01_Poster_w_title (1).jpg" alt="">
   <div class="hero-content">
     <img src="post-images/Retrobot_Logo_EN_CI.png" alt="RetroBot" style="height:80px;width:auto;margin-bottom:16px;">
-    <p class="hero-label">Where Creative Ideas Become Worlds.</p>
+    <p class="hero-label">Where Creative Ideas Become Worlds</p>
     <h1 class="hero-title">Building world-class IPs,<br>bringing stories to the world.</h1>
     <p class="hero-sub">RetroBot CI is a story and character development studio — creating original IPs across animation, publishing, and media for global audiences.</p>
     <div class="hero-cta">
@@ -322,7 +324,7 @@
       </div>
     </a>
     <div class="work-card">
-      <div style="width:100%;aspect-ratio:16/9;background:#161616;display:flex;align-items:center;justify-content:center;font-size:200px;font-weight:900;color:#888;overflow:hidden;">?</div>
+      <div style="width:100%;aspect-ratio:16/9;background:#0a0a0a;display:flex;align-items:center;justify-content:center;font-size:200px;font-weight:900;color:#222;overflow:hidden;">?</div>
       <div class="work-card-body">
         <h3>Trash Idol</h3>
       </div>
@@ -337,18 +339,18 @@
   <div class="services-grid">
     <div class="service-item">
       <p class="service-num">01</p>
-      <h3>3D / CGI Animation</h3>
-      <p>Full-service 3D CGI production for broadcast and streaming series — from pre-production through final delivery.</p>
+      <h3>IP Development</h3>
+      <p>Developing original story and character IPs from concept to global distribution — across animation, publishing, and media.</p>
     </div>
     <div class="service-item">
       <p class="service-num">02</p>
-      <h3>IP Development &amp; Co-Production</h3>
-      <p>Original IP creation and international co-production partnerships that bring new stories to global audiences.</p>
+      <h3>2D / 3D Animation Production</h3>
+      <p>End-to-end production management for 2D and 3D animated series — from concept development and pre-production planning through final delivery.</p>
     </div>
     <div class="service-item">
       <p class="service-num">03</p>
-      <h3>Post: FX / Comp / Color</h3>
-      <p>Visual effects, compositing, color grading, and technical delivery for broadcast and streaming standards.</p>
+      <h3>Character Merchandise</h3>
+      <p>Bringing original characters to life through toys, apparel, and licensed products — developing merchandise that extends IP value beyond the screen.</p>
     </div>
     <div class="service-item">
       <p class="service-num">04</p>
@@ -364,14 +366,12 @@
     <div class="about-text">
       <p class="section-label">About</p>
       <h2 class="section-title">RetroBot CI</h2>
-      <p>RetroBot is a Korea-based 3D CGI studio known internationally for TOBOT and PotenDogs. We specialize in the complete production pipeline — from concept and world-building through animation, post, and global distribution.</p>
-      <p>With a team built around creative and technical excellence, RetroBot has established a reputation for delivering high-quality animated properties that resonate with audiences worldwide.</p>
+      <p>Founded by animation director Dahl Lee — the creative force behind the hit series <em>TOBOT</em> — RetroBot CI is a studio focused on original IP development and production planning, building story-driven properties for global audiences.</p>
     </div>
     <div class="founder-card">
       <h3>Dahl Lee</h3>
       <p class="founder-role">CEO · Animation Director · Songwriter</p>
-      <p>Founded RetroBot in 2008 with a vision to build world-class animated IPs from Korea. Has directed multiple internationally distributed series and feature productions, while also contributing original music to RetroBot's properties.</p>
-      <span class="founded-year">Founded 2008 · Seoul, South Korea</span>
+      <p>Founded RetroBot in 2008 with a vision to build world-class animated IPs from Korea. Has directed multiple internationally distributed series and feature productions, while also contributing original music to RetroBot's properties. In 2022, established RetroBot CI to lead the development and production planning of <em>TOBOT: Daedo's Heroes</em>.</p>
     </div>
   </div>
 </section>
@@ -389,8 +389,8 @@
         </div>
         <div class="contact-row">
           <strong>Address</strong>
-          55, Digital-ro 33-gil, Guro-gu<br>
-          Seoul, 08376 · South Korea
+          #326, 416 Hwagok-ro, Gangseo-gu<br>
+          Seoul, 07548 · South Korea
         </div>
       </div>
     </div>
