@@ -246,8 +246,12 @@
     <!-- Article form -->
     <div class="section-header">
       <h2 id="form-heading">Articles</h2>
-      <button class="btn btn-primary" id="new-article-btn">+ New Article</button>
+      <div style="display:flex;gap:10px;align-items:center;">
+        <button class="btn btn-secondary" id="import-btn" title="Import original articles from Wix">Import Original Articles</button>
+        <button class="btn btn-primary" id="new-article-btn">+ New Article</button>
+      </div>
     </div>
+    <p id="import-status" style="font-size:13px;color:#7eb8b0;margin-bottom:16px;min-height:20px;"></p>
 
     <form id="article-form">
       <div class="form-row">
@@ -467,6 +471,65 @@
       alert('Failed to delete: ' + err.message);
     }
   }
+
+  // ── Bulk import ──
+  const wixArticles = [
+    { title: "EBS started airing PotenDogs", excerpt: "Meet PotenDogs at 07:05 PM every Thursday & Friday on EBS1.EBS(Educational Broadcasting System), a Korean Free TV channel started airing the new animated series, 'PotenDogs'. PotenDogs is created & produced by RetroBot, a well-known animation company as the co-producer of a big-hit show, 'TOBOT'. The story of PotenDogs is about co-existence of humans and dogs who have various super-powers. It is a super-hero/action/comedy/musical show for children over 8.", imageUrl: "post-images/news/ebs-started-airing.jpg", date: new Date("2021-05-27T12:31:55.000Z") },
+    { title: "AKG Games partners RetroBot to distribute PotenDogs", excerpt: "AKG Games, a homegrown game publisher and intellectual property rights company has announced a partnership with leading Korean 3D animation studio – RetroBot. This partnership sees AKG Games manage the animation and product licensing rights for RetroBot's newest intellectual property – PotenDogs – across Indonesia and the Philippines.", imageUrl: "post-images/news/akg-games-partners.png", date: new Date("2021-06-10T12:41:34.608Z") },
+    { title: "Stepped In Poo — The Epic Musical Song of PotenDogs", excerpt: "In 2021, I Stepped In Poo, one of the epic OSTs from PotenDogs took Korea by storm. Its video clips recorded over 18 million views on YouTube, in just a month of time. I Stepped In Poo ranked No.13 on OST Chart of online music streaming service, and ranked in TOP 100th of the General Music Chart for the first time as Korean animation OST.", imageUrl: "post-images/news/stepped-in-poo-song.jpg", date: new Date("2021-08-03T01:58:34.429Z") },
+    { title: "PotenDogs winning awards at International Film Festivals", excerpt: "PotenDogs won 'Outstanding Achievement Award' at the Animalis Fabula Film Festival 2021 in Texas, US. The judge's aggregate score for PotenDogs at the Animalis Fabula is 8.9 out of 10.", imageUrl: "post-images/news/winning-awards-festivals.jpg", date: new Date("2021-11-30T04:47:48.811Z") },
+    { title: "Stepped In Poo — 2nd Most Loved Video on YouTube 2021 Korea", excerpt: "I Stepped In Poo, the iconic musical song from PotenDogs, ranked the 2nd most viewed video clip on YouTube in Korea throughout 2021, ahead of many famous K-Pop songs.", imageUrl: "post-images/news/stepped-in-poo-2nd-youtube.jpg", date: new Date("2021-12-24T04:09:22.669Z") },
+    { title: "Distribution Agreement of PotenDogs made with Millimages", excerpt: "RetroBot has made a distribution agreement of PotenDogs with Millimages, the well-known French Animation Studio & Distributor. Distribution territory includes French speaking countries, Eastern Europe, Northern Europe and China.", imageUrl: "post-images/news/millimages-distribution.png", date: new Date("2022-04-12T06:58:51.415Z") },
+    { title: "PotenDogs Nominated in Three Categories at the Buffalo Dreams Fantastic Film Festival", excerpt: "PotenDogs has been nominated in three categories—Outstanding International Feature, Outstanding Science Fiction Feature, and Outstanding Animated Film—at the 2022 Buffalo Dreams Fantastic Film Festival, to be held in Buffalo, New York.", imageUrl: "post-images/news/buffalo-dreams-festival.png", date: new Date("2022-07-24T15:00:00.000Z") },
+    { title: "PotenDogs Wins the Best Animated Feature Film Award at the Montevideo World Film Festival", excerpt: "PotenDogs won the \"Best Animated Feature Film\" award at the Montevideo World Film Festival, held in Montevideo, Uruguay, on July 7, 2022.", imageUrl: "post-images/news/montevideo-festival.jpg", date: new Date("2022-07-07T15:03:22.206Z") },
+    { title: "PotenDogs Wins the Best of Show Award at the Nature Without Borders International Film Festival", excerpt: "PotenDogs won the \"Best of Show\" award at the 5th Nature Without Borders International Film Festival, held on July 16 in Lewes, Delaware.", imageUrl: "post-images/news/nature-without-borders-festival.jpg", date: new Date("2022-07-17T15:00:00.000Z") },
+    { title: "PotenDogs Received an Honorable Mention at the Venice Fullshot Film Festival", excerpt: "PotenDogs received an Honorable Mention in the Best Animation category at the Venice Fullshot Film Festival, held on September 7 in Venice, Italy.", imageUrl: "post-images/news/venice-fullshot-festival.webp", date: new Date("2022-09-07T15:00:00.000Z") },
+    { title: "PotenDogs Wins the Silver Remi Award at the Houston International Film Festival", excerpt: "PotenDogs won the Silver Remi Award in the Feature - Anime / Manga category at the 2023 Houston International Film Festival, held on April 25 in Houston, Texas.", imageUrl: "post-images/news/houston-silver-remi.jpg", date: new Date("2023-04-25T15:00:00.000Z") },
+    { title: "PotenDogs Set to Premiere on Amazon Prime Video", excerpt: "Amazon Prime Video announced today that it will stream the Korean animation PotenDogs. This is the first time a Korean animation set in Korea will be featured on Amazon Prime Video.", imageUrl: "post-images/news/amazon-premiere.png", date: new Date("2024-09-14T15:00:00.000Z") },
+    { title: "PotenDogs English Version Set to Premiere on Happy Kids TV", excerpt: "The English version of PotenDogs has been confirmed for streaming on Happy Kids TV, following its release on Amazon Prime Video. Happy Kids TV is a U.S. FAST channel primarily streaming programs for children.", imageUrl: "post-images/news/happy-kids-tv.png", date: new Date("2024-10-16T15:00:00.000Z") },
+    { title: "English Version of 'I Stepped In Poo' Released", excerpt: "The English version of \"I Stepped In Poo,\" a song that swept South Korea in 2021, was released globally today on music platforms including Apple Music, Spotify, and YouTube Music.", imageUrl: "post-images/news/stepped-in-poo-english.png", date: new Date("2024-10-13T15:00:00.000Z") },
+    { title: "Season 1 of PotenDogs Launched on Amazon Prime Video", excerpt: "Season 1 of PotenDogs just launched on Amazon. The English adaptation of PotenDogs is now streaming on Prime Video, featuring many talented voice actors from the U.S. and the U.K.", imageUrl: "post-images/news/amazon-season1-launch.jpg", date: new Date("2024-10-20T15:00:00.000Z") },
+    { title: "PotenDogs English Version Licensed to Tubi", excerpt: "PotenDogs Season 1 has been licensed to Tubi. You will soon be able to stream your favorite mega-smash-hit Korean Super Dog animated series in English.", imageUrl: "post-images/news/tubi.png", date: new Date("2024-11-11T17:58:22.901Z") },
+    { title: "PotenDogs English Version Licensed to YouTube Free Movies & TV", excerpt: "WA2S, the U.S. distributor for PotenDogs, has announced that it has signed a broadcasting contract with YouTube Free Movies & TV for the show.", imageUrl: "post-images/news/youtube-free-movies.jpg", date: new Date("2025-01-25T12:59:47.283Z") },
+    { title: "From Korea to the World — The Success of PotenDogs (Motionographer)", excerpt: "Since PotenDogs began airing in the U.S. through Amazon Prime, it has been expanding its broadcasting channels. Motionographer® has published an article introducing PotenDogs.", imageUrl: "post-images/news/motionographer.png", date: new Date("2025-02-13T01:52:02.492Z") },
+    { title: "Korean Animated Series PotenDogs Hits the U.S. (AWN)", excerpt: "As PotenDogs continues to expand its broadcasting channels in the U.S., AWN published an article about PotenDogs. AWN, along with KidScreen, is one of the two major media outlets covering the global animation industry.", imageUrl: "post-images/news/awn-article.png", date: new Date("2025-02-13T02:00:04.969Z") },
+    { title: "Global Animation Critic Rebel Taxi Praises PotenDogs", excerpt: "YouTuber and animation specialist Rebel Taxi (real name Pan-Pizza), who boasts over 500,000 subscribers, has drawn attention with his review of the Korean 3D animation PotenDogs.", imageUrl: "post-images/news/rebel-taxi.jpg", date: new Date("2025-03-01T09:38:30.000Z") },
+    { title: "Isabella Tugman Nominated for Best Female Character Performance at the 2025 OneVoice Awards", excerpt: "Isabella Tugman, who voices both Hwan's mother and the character Cloud in the English version of PotenDogs, has been nominated for the Best Female Character Performance award at the 2025 OneVoice Awards.", imageUrl: "post-images/news/onevoice-tugman.jpg", date: new Date("2025-05-09T09:54:01.000Z") },
+    { title: "PotenDogs Inks Broadcast Deals with U.S. KAOZ TV and Umaxx", excerpt: "Man Smiling Moving Pictures, the distributor of the English version of PotenDogs, announced that it has signed broadcasting agreements with U.S.-based FAST channel KAOZ TV and OTT/IPTV operator UMAXX.", imageUrl: "post-images/news/kaoz-umaxx.jpg", date: new Date("2025-05-18T10:11:36.000Z") },
+    { title: "PotenDogs Secures U.S. Broadcast Deal with DogTV", excerpt: "Man Smiling Moving Pictures, the distributor of the English version of PotenDogs, announced that it has signed a broadcast agreement with DogTV in the United States.", imageUrl: "post-images/news/dogtv.webp", date: new Date("2025-06-06T12:28:04.000Z") },
+    { title: "PotenDogs Secures U.S. Broadcast Deal with StashTV", excerpt: "Man Smiling Moving Pictures, the distributor of the English version of PotenDogs, announced that it has signed a broadcast agreement with U.S. FAST channel StashTV.", imageUrl: "post-images/news/stashtv.png", date: new Date("2025-06-18T12:36:04.000Z") },
+    { title: "WA2S Films Signs Broadcast Deal with Fawesome TV for PotenDogs English Version", excerpt: "WA2S Films Signs Broadcast Deal with Fawesome TV for PotenDogs English Version.", imageUrl: "post-images/news/fawesome.png", date: new Date("2025-07-28T02:30:53.000Z") },
+  ];
+
+  document.getElementById('import-btn').addEventListener('click', async () => {
+    if (!confirm(`Import ${wixArticles.length} original articles from Wix? This will add them alongside any existing articles.`)) return;
+    const statusEl = document.getElementById('import-status');
+    const btn = document.getElementById('import-btn');
+    btn.disabled = true;
+    statusEl.textContent = 'Importing...';
+    let count = 0;
+    try {
+      for (const a of wixArticles) {
+        await addDoc(collection(db, 'articles'), {
+          title: a.title,
+          excerpt: a.excerpt,
+          content: a.excerpt,
+          imageUrl: a.imageUrl,
+          date: Timestamp.fromDate(a.date),
+          published: true,
+          createdAt: Timestamp.now()
+        });
+        count++;
+        statusEl.textContent = `Importing... (${count}/${wixArticles.length})`;
+      }
+      statusEl.textContent = `✓ ${count} articles imported successfully.`;
+      loadArticles();
+    } catch (err) {
+      statusEl.textContent = `Error after ${count} articles: ${err.message}`;
+    } finally {
+      btn.disabled = false;
+    }
+  });
 </script>
 </body>
 </html>
