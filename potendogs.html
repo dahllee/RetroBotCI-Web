@@ -60,7 +60,7 @@
 
     /* ── Layer 3: Dark grain box (parallax through fixed bg) ── */
     .grain-box {
-      background: rgba(4, 4, 6, 0.88);
+      background: #000;
       position: relative;
     }
 
@@ -209,7 +209,7 @@
        TRAILER SECTION
     ══════════════════════════════════════════ */
     #trailer {
-      padding: 80px 24px;
+      padding: 60px 24px;
     }
     #trailer .video-wrap {
       max-width: 740px;
@@ -230,21 +230,25 @@
        STORY SECTION
     ══════════════════════════════════════════ */
     #story {
-      padding: 80px 24px;
+      padding: 60px 24px 0;
     }
     #story .story-text {
       max-width: 760px;
       margin: 40px auto 0;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       font-size: 17px;
-      line-height: 1.8;
+      line-height: 1.2;
       text-align: center;
       color: #e8e8e8;
+      position: relative;
+      z-index: 2;
     }
     #story .story-text p { margin-bottom: 20px; }
     #story .story-image {
-      max-width: 760px;
-      margin: 48px auto 0;
+      max-width: 1609px;
+      margin: -90px auto 0;
+      position: relative;
+      z-index: 1;
     }
     #story .story-image img { width: 100%; }
 
@@ -252,12 +256,12 @@
        PODONGNET VS. GOLDFANG SECTION
     ══════════════════════════════════════════ */
     #factions {
-      padding: 80px 24px;
+      padding: 15px 24px 302px;
     }
     .factions-emblems {
       display: flex;
       justify-content: center;
-      gap: 120px;
+      gap: 330px;
       margin-top: 48px;
       flex-wrap: wrap;
     }
@@ -267,7 +271,15 @@
       align-items: center;
       gap: 20px;
     }
-    .faction-emblem img { height: 200px; width: auto; object-fit: contain; }
+    .emblem-img-wrap {
+      height: 320px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .faction-emblem img { width: auto; object-fit: contain; }
+    .faction-emblem:first-child img { height: 269px; }
+    .faction-emblem:last-child img { height: 309px; }
     .faction-emblem h3 {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       font-size: 28px;
@@ -276,38 +288,70 @@
     }
     .faction-emblem .divider { margin-top: 8px; }
 
-    /* ── Character grid ── */
+    /* ── Character hex grid ── */
     .char-grid {
-      max-width: 900px;
-      margin: 60px auto 0;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0;
+      margin: 32px auto 0;
+      display: flex;
+      justify-content: center;
+      gap: 100px;
     }
-    .char-col {
+    .faction-hex {
+      display: flex;
+      align-items: flex-start;
+    }
+    .hex-col {
       display: flex;
       flex-direction: column;
-      align-items: center;
-      gap: 16px;
-    }
-    .char-item {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
       gap: 8px;
+    }
+    .hex-col.pd-stagger { padding-top: 188px; }
+    .cloud-card { transform: translate(25px, 5px); }
+    .munggou-card { transform: translateY(130px); }
+    .radar-card   { transform: translate(25px, 135px); }
+    .fufu-card    { transform: translateY(260px); }
+    .bullet-card  { transform: translate(25px, 265px); }
+    .hex-col.gf-stagger { padding-top: 188px; }
+    .gaelong-card { transform: translate(-25px,   5px); }
+    .dogu-card    { transform: translateY(130px); }
+    .biscuit-card { transform: translate(-25px, 135px); }
+    .rutger-card  { transform: translateY(260px); }
+    .gwyneth-card { transform: translate(-25px, 265px); }
+    /* overlap the two sub-columns horizontally to match hex honeycomb */
+    .hex-col:last-child { margin-left: -80px; z-index: 1; }
+    .char-item {
+      position: relative;
+      width: 216px;
       cursor: pointer;
       text-decoration: none;
       transition: opacity 0.2s;
+      display: block;
     }
     .char-item:hover { opacity: 0.8; }
-    .char-item img { width: 200px; height: auto; }
-    .char-item span {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      font-size: 16px;
-      color: #e0e0e0;
+    .char-item img {
+      width: 216px;
+      height: 248px;
+      object-fit: cover;
+      display: block;
     }
-    /* Stagger right column down */
-    .char-col.right { padding-top: 80px; }
+    .char-item span {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 17px;
+      color: #e0e0e0;
+      white-space: nowrap;
+    }
+    /* Left col: name floats to the RIGHT into the gap */
+    .hex-col:first-child .char-item span {
+      left: calc(100% + 12px);
+      text-align: left;
+    }
+    /* Right col: name floats to the LEFT into the gap */
+    .hex-col:last-child .char-item span {
+      right: calc(100% + 12px);
+      text-align: right;
+    }
 
     /* ══════════════════════════════════════════
        GALLERY SECTION
@@ -560,34 +604,48 @@
 <section id="factions">
   <div class="factions-emblems">
     <div class="faction-emblem">
-      <img src="post-images/1ab44f_d31ce986a11f4b37b9c4162ce0ab9170~mv2.png" alt="PodongNet emblem">
+      <div class="emblem-img-wrap">
+        <img src="post-images/1ab44f_d31ce986a11f4b37b9c4162ce0ab9170~mv2.png" alt="PodongNet emblem">
+      </div>
       <h3>PodongNet</h3>
       <div class="divider"></div>
     </div>
     <div class="faction-emblem">
-      <img src="post-images/1ab44f_8e35369dfb51413dacf8b6d773ec27f3~mv2.png" alt="GoldFang emblem">
+      <div class="emblem-img-wrap">
+        <img src="post-images/1ab44f_8e35369dfb51413dacf8b6d773ec27f3~mv2.png" alt="GoldFang emblem">
+      </div>
       <h3>GoldFang</h3>
       <div class="divider"></div>
     </div>
   </div>
 
-  <!-- Character grid: PodongNet left / GoldFang right -->
+  <!-- Character hex grid -->
   <div class="char-grid">
-    <div class="char-col left">
-      <a class="char-item" href="kai.html"><img src="post-images/1ab44f_05134467ac8a48f08a56e73044ef3318~mv2.png" alt="Kai" loading="lazy"><span>Kai</span></a>
-      <a class="char-item" href="cloud.html"><img src="post-images/1ab44f_7774f5b1aeeb49b0988e2e92bb8ad874~mv2.png" alt="Cloud" loading="lazy"><span>Cloud</span></a>
-      <a class="char-item" href="munggou.html"><img src="post-images/1ab44f_79df883c78ec4967980892cdd1f53f23~mv2.png" alt="Munggou" loading="lazy"><span>Munggou</span></a>
-      <a class="char-item" href="radar.html"><img src="post-images/1ab44f_9242a48b4839473b91ced2519ed8a49a~mv2.png" alt="Radar" loading="lazy"><span>Radar</span></a>
-      <a class="char-item" href="fufu.html"><img src="post-images/1ab44f_1c62453288844cbebfb63fc6dd5ba847~mv2.png" alt="Fufu" loading="lazy"><span>Fufu</span></a>
-      <a class="char-item" href="bullet.html"><img src="post-images/1ab44f_865a599f987b43c8892be9d38ac41ebf~mv2.png" alt="Bullet" loading="lazy"><span>Bullet</span></a>
+    <!-- PodongNet: left col = Cloud,Radar,Bullet (stagger); right col = Kai,Munggou,Fufu -->
+    <div class="faction-hex">
+      <div class="hex-col pd-stagger">
+        <a class="char-item cloud-card" href="cloud.html"><img src="post-images/1ab44f_7774f5b1aeeb49b0988e2e92bb8ad874~mv2.png" alt="Cloud" loading="lazy"><span>Cloud</span></a>
+        <a class="char-item radar-card" href="radar.html"><img src="post-images/1ab44f_9242a48b4839473b91ced2519ed8a49a~mv2.png" alt="Radar" loading="lazy"><span>Radar</span></a>
+        <a class="char-item bullet-card" href="bullet.html"><img src="post-images/1ab44f_865a599f987b43c8892be9d38ac41ebf~mv2.png" alt="Bullet" loading="lazy"><span>Bullet</span></a>
+      </div>
+      <div class="hex-col">
+        <a class="char-item" href="kai.html"><img src="post-images/1ab44f_05134467ac8a48f08a56e73044ef3318~mv2.png" alt="Kai" loading="lazy"><span>Kai</span></a>
+        <a class="char-item munggou-card" href="munggou.html"><img src="post-images/1ab44f_79df883c78ec4967980892cdd1f53f23~mv2.png" alt="Munggou" loading="lazy"><span>Munggou</span></a>
+        <a class="char-item fufu-card" href="fufu.html"><img src="post-images/1ab44f_1c62453288844cbebfb63fc6dd5ba847~mv2.png" alt="Fufu" loading="lazy"><span>Fufu</span></a>
+      </div>
     </div>
-    <div class="char-col right">
-      <a class="char-item" href="garrius.html"><img src="post-images/1ab44f_c393483263e3428083603251f4fd26f3~mv2.png" alt="Garrius" loading="lazy"><span>Garrius</span></a>
-      <a class="char-item" href="guolong.html"><img src="post-images/1ab44f_3ba62d9d6b494adab4b4db63d7578353~mv2.png" alt="Gaelong" loading="lazy"><span>Gaelong</span></a>
-      <a class="char-item" href="dogu.html"><img src="post-images/1ab44f_9cd074e31a5e45b59cb528864ecb20c0~mv2.png" alt="Dogu" loading="lazy"><span>Dogu</span></a>
-      <a class="char-item" href="biscuit.html"><img src="post-images/1ab44f_c532e7e39c684977bf26fcf1fa778543~mv2.png" alt="Biscuit" loading="lazy"><span>Biscuit</span></a>
-      <a class="char-item" href="rutger.html"><img src="post-images/1ab44f_e434ba0040c4400e9d53a150a95409c2~mv2.png" alt="Rutger" loading="lazy"><span>Rutger</span></a>
-      <a class="char-item" href="gwyneth.html"><img src="post-images/1ab44f_7d510b4a2cf34e2fb9efbc479ac31a81~mv2.png" alt="Gwyneth" loading="lazy"><span>Gwyneth</span></a>
+    <!-- GoldFang: left col = Garrius,Dogu,Rutger; right col = Gaelong,Biscuit,Gwyneth (stagger) -->
+    <div class="faction-hex">
+      <div class="hex-col">
+        <a class="char-item" href="garrius.html"><img src="post-images/1ab44f_c393483263e3428083603251f4fd26f3~mv2.png" alt="Garrius" loading="lazy"><span>Garrius</span></a>
+        <a class="char-item dogu-card" href="dogu.html"><img src="post-images/1ab44f_9cd074e31a5e45b59cb528864ecb20c0~mv2.png" alt="Dogu" loading="lazy"><span>Dogu</span></a>
+        <a class="char-item rutger-card" href="rutger.html"><img src="post-images/1ab44f_e434ba0040c4400e9d53a150a95409c2~mv2.png" alt="Rutger" loading="lazy"><span>Rutger</span></a>
+      </div>
+      <div class="hex-col gf-stagger">
+        <a class="char-item gaelong-card" href="guolong.html"><img src="post-images/1ab44f_3ba62d9d6b494adab4b4db63d7578353~mv2.png" alt="Gaelong" loading="lazy"><span>Gaelong</span></a>
+        <a class="char-item biscuit-card" href="biscuit.html"><img src="post-images/1ab44f_c532e7e39c684977bf26fcf1fa778543~mv2.png" alt="Biscuit" loading="lazy"><span>Biscuit</span></a>
+        <a class="char-item gwyneth-card" href="gwyneth.html"><img src="post-images/1ab44f_7d510b4a2cf34e2fb9efbc479ac31a81~mv2.png" alt="Gwyneth" loading="lazy"><span>Gwyneth</span></a>
+      </div>
     </div>
   </div>
 </section>
