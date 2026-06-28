@@ -3,109 +3,350 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>News — RetroBot CI</title>
+  <title>News — PotenDogs</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html { scroll-behavior: smooth; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-      background: #0a0a0a;
-      color: #f0f0f0;
-      line-height: 1.6;
+      font-family: 'Georgia', serif;
+      color: #fff;
+      background: url('post-images/1ab44f_9d1aa6ba85884e8ba11142f3e956fa66~mv2.jpg') center 0/cover fixed;
+      min-height: 100vh;
     }
     a { color: inherit; text-decoration: none; }
+    img { display: block; max-width: 100%; }
 
-    /* ── Header ── */
+    /* Header */
     header {
       position: fixed;
       top: 0; left: 0; right: 0;
-      z-index: 100;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 48px;
-      height: 64px;
-      background: rgba(10,10,10,0.90);
-      backdrop-filter: blur(10px);
-      border-bottom: 1px solid #1e1e1e;
+      z-index: 1000;
+      background: rgba(10, 12, 18, 0.88);
+      backdrop-filter: blur(6px);
     }
-    nav { display: flex; gap: 32px; align-items: center; }
+    nav {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 28px;
+      height: 56px;
+    }
     nav a {
-      font-size: 13px;
-      font-weight: 500;
-      letter-spacing: 0.07em;
-      text-transform: uppercase;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      font-weight: 300;
+      letter-spacing: 0.04em;
       color: #888;
       transition: color 0.2s;
     }
-    nav a:hover { color: #fff; }
+    nav a:hover, nav a.active { color: #fff; font-weight: 400; }
 
-    /* ── Coming Soon ── */
-    .coming-soon {
-      display: flex;
-      flex-direction: column;
+    /* Page */
+    .page-wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 100px 48px 100px;
+    }
+    .page-title {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 34px;
+      font-weight: 400;
+      text-align: center;
+      letter-spacing: 0.02em;
+    }
+    .divider {
+      width: 36px;
+      height: 2px;
+      background: #fff;
+      margin: 16px auto 48px;
+    }
+
+    /* News grid */
+    .news-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+    .news-card {
+      background: rgba(10, 12, 18, 0.80);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 4px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .news-card:hover {
+      border-color: rgba(255,255,255,0.25);
+      transform: translateY(-3px);
+    }
+    .card-img {
+      aspect-ratio: 16/9;
+      background: rgba(255,255,255,0.04);
+      overflow: hidden;
+    }
+    .card-img img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.3s;
+    }
+    .news-card:hover .card-img img { transform: scale(1.04); }
+    .card-body { padding: 20px; }
+    .card-date {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 11px;
+      color: #7eb8b0;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .card-title {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 1.4;
+      margin-bottom: 10px;
+      color: #f0f0f0;
+    }
+    .card-excerpt {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 13px;
+      color: #888;
+      line-height: 1.6;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .status-msg {
+      grid-column: 1 / -1;
+      text-align: center;
+      color: #666;
+      padding: 80px 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 15px;
+    }
+
+    /* Article modal */
+    #article-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: rgba(0,0,0,0.88);
       align-items: center;
       justify-content: center;
-      min-height: 100vh;
-      gap: 16px;
-      text-align: center;
-      padding: 48px;
+      padding: 24px;
     }
-    .coming-soon .label {
+    #article-modal.open { display: flex; }
+    .modal-box {
+      background: #0e1018;
+      border: 1px solid #2a2a2a;
+      border-radius: 6px;
+      max-width: 760px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+      position: relative;
+    }
+    .modal-img {
+      aspect-ratio: 16/9;
+      background: #1a1a1a;
+      overflow: hidden;
+    }
+    .modal-img img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .modal-body { padding: 36px; }
+    .modal-date {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.2em;
-      text-transform: uppercase;
       color: #7eb8b0;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 12px;
     }
-    .coming-soon h1 {
-      font-size: clamp(32px, 4vw, 56px);
+    .modal-title {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 22px;
       font-weight: 700;
-      letter-spacing: -0.02em;
+      line-height: 1.35;
+      margin-bottom: 20px;
+      color: #f0f0f0;
     }
-    .coming-soon p {
+    .modal-content {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       font-size: 15px;
-      color: #555;
+      color: #bbb;
+      line-height: 1.85;
     }
+    .modal-content p { margin-bottom: 16px; }
+    .modal-close {
+      position: absolute;
+      top: 14px; right: 18px;
+      font-size: 28px;
+      color: #666;
+      cursor: pointer;
+      background: none;
+      border: none;
+      line-height: 1;
+    }
+    .modal-close:hover { color: #fff; }
 
-    /* ── Footer ── */
+    /* Footer */
     footer {
-      border-top: 1px solid #1e1e1e;
+      border-top: 1px solid rgba(255,255,255,0.08);
       padding: 48px;
       display: flex;
       flex-direction: column;
       align-items: center;
       gap: 8px;
+      background: rgba(10,12,18,0.80);
     }
     footer img { height: 40px; width: auto; }
-    footer p { font-size: 12px; color: #444; letter-spacing: 0.03em; }
+    footer p {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 12px;
+      color: #444;
+      letter-spacing: 0.03em;
+    }
   </style>
 </head>
 <body>
 
-<!-- ── Header ── -->
 <header>
   <nav>
-    <a href="index.html#works">Works</a>
-    <a href="news-1.html">News</a>
-    <a href="index.html#contact">Contact</a>
+    <a href="potendogs.html">PotenDogs</a>
+    <a href="potendogs.html#background">Background</a>
+    <a href="potendogs.html#trailer">Trailer</a>
+    <a href="potendogs.html#story">Story</a>
+    <a href="potendogs.html#factions">PodongNet Vs. GoldFang</a>
+    <a href="potendogs.html#gallery">Gallery</a>
+    <a href="news-1.html" class="active">News</a>
+    <a href="potendogs.html#contact">Contact</a>
   </nav>
 </header>
 
-<!-- ── Coming Soon ── -->
-<div class="coming-soon">
-  <p class="label">News</p>
-  <h1>Coming Soon</h1>
-  <p>We're working on it. Check back later.</p>
+<div class="page-wrap">
+  <h1 class="page-title">News</h1>
+  <div class="divider"></div>
+  <div class="news-grid" id="news-grid">
+    <p class="status-msg">Loading...</p>
+  </div>
 </div>
 
-<!-- ── Footer ── -->
+<!-- Article modal -->
+<div id="article-modal">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal()">&times;</button>
+    <div class="modal-img" id="modal-img-wrap"></div>
+    <div class="modal-body">
+      <p class="modal-date" id="modal-date"></p>
+      <h2 class="modal-title" id="modal-title"></h2>
+      <div class="modal-content" id="modal-content"></div>
+    </div>
+  </div>
+</div>
+
 <footer>
-  <a href="index.html">
-    <img src="post-images/1ab44f_b4e1291ff6614694b1631f2ab912f957~mv2.png" alt="RetroBot CI">
+  <a href="https://retrobot.co.kr" target="_blank">
+    <img src="post-images/1ab44f_85c42d5e2a684344afe9b6f1d771074f~mv2.png" alt="RetroBot">
   </a>
   <p>&copy; 2021 RetroBot Inc. All Rights Reserved.</p>
 </footer>
 
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
+  import { getFirestore, collection, getDocs, orderBy, query } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBJzQ7se2nnWy4PmXTymM6mUytRTqS5p_k",
+    authDomain: "potendogs-news.firebaseapp.com",
+    projectId: "potendogs-news",
+    storageBucket: "potendogs-news.firebasestorage.app",
+    messagingSenderId: "145629588211",
+    appId: "1:145629588211:web:0fe6a7373bdff441616586"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  function formatDate(val) {
+    if (!val) return '';
+    const d = val.toDate ? val.toDate() : new Date(val);
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  }
+
+  window.closeModal = function() {
+    document.getElementById('article-modal').classList.remove('open');
+    document.body.style.overflow = '';
+  };
+
+  window.openArticle = function(article) {
+    const imgWrap = document.getElementById('modal-img-wrap');
+    if (article.imageUrl) {
+      imgWrap.style.display = 'block';
+      imgWrap.innerHTML = `<img src="${article.imageUrl}" alt="${article.title}">`;
+    } else {
+      imgWrap.style.display = 'none';
+      imgWrap.innerHTML = '';
+    }
+    document.getElementById('modal-date').textContent = formatDate(article.date);
+    document.getElementById('modal-title').textContent = article.title;
+    const html = (article.content || article.excerpt || '')
+      .split('\n\n')
+      .map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`)
+      .join('');
+    document.getElementById('modal-content').innerHTML = html;
+    document.getElementById('article-modal').classList.add('open');
+    document.body.style.overflow = 'hidden';
+  };
+
+  document.getElementById('article-modal').addEventListener('click', function(e) {
+    if (e.target === this) window.closeModal();
+  });
+
+  async function loadArticles() {
+    const grid = document.getElementById('news-grid');
+    try {
+      const q = query(collection(db, 'articles'), orderBy('date', 'desc'));
+      const snapshot = await getDocs(q);
+      const articles = [];
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.published !== false) articles.push({ id: doc.id, ...data });
+      });
+
+      if (articles.length === 0) {
+        grid.innerHTML = '<p class="status-msg">No articles yet.</p>';
+        return;
+      }
+
+      grid.innerHTML = '';
+      articles.forEach(article => {
+        const card = document.createElement('div');
+        card.className = 'news-card';
+        card.onclick = () => window.openArticle(article);
+        card.innerHTML = `
+          <div class="card-img">
+            ${article.imageUrl ? `<img src="${article.imageUrl}" alt="${article.title}" loading="lazy">` : ''}
+          </div>
+          <div class="card-body">
+            <p class="card-date">${formatDate(article.date)}</p>
+            <h3 class="card-title">${article.title}</h3>
+            <p class="card-excerpt">${article.excerpt || ''}</p>
+          </div>`;
+        grid.appendChild(card);
+      });
+    } catch (err) {
+      grid.innerHTML = '<p class="status-msg">Failed to load articles.</p>';
+      console.error(err);
+    }
+  }
+
+  loadArticles();
+</script>
 </body>
 </html>

@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin — PotenDogs News</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0a0a0a;
+      color: #f0f0f0;
+      min-height: 100vh;
+    }
+    a { color: inherit; text-decoration: none; }
+
+    /* Login screen */
+    #login-screen {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .login-box {
+      background: #111;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 48px;
+      width: 360px;
+    }
+    .login-box h1 {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 32px;
+      color: #f0f0f0;
+    }
+    .login-box h1 span { color: #7eb8b0; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label {
+      display: block;
+      font-size: 12px;
+      color: #888;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .form-group input, .form-group textarea, .form-group select {
+      width: 100%;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 4px;
+      padding: 10px 12px;
+      color: #f0f0f0;
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .form-group input:focus, .form-group textarea:focus { border-color: #7eb8b0; }
+    .form-group textarea { resize: vertical; min-height: 100px; }
+    .error-msg {
+      font-size: 13px;
+      color: #e06c6c;
+      margin-top: 12px;
+      min-height: 20px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 20px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn-primary { background: #7eb8b0; color: #0a0a0a; }
+    .btn-secondary { background: #2a2a2a; color: #ccc; }
+    .btn-danger { background: #3a1a1a; color: #e06c6c; border: 1px solid #5a2a2a; }
+    .btn-full { width: 100%; justify-content: center; margin-top: 8px; }
+
+    /* Admin screen */
+    #admin-screen { display: none; }
+    .admin-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(10,10,10,0.95);
+      backdrop-filter: blur(6px);
+      border-bottom: 1px solid #1e1e1e;
+      padding: 0 48px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .admin-header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #7eb8b0;
+    }
+    .admin-wrap {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 40px 48px 80px;
+    }
+
+    /* Article form */
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+    .section-header h2 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #f0f0f0;
+    }
+    #article-form {
+      background: #111;
+      border: 1px solid #2a2a2a;
+      border-radius: 6px;
+      padding: 32px;
+      margin-bottom: 48px;
+      display: none;
+    }
+    #article-form.visible { display: block; }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .form-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+    }
+    .publish-toggle {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .publish-toggle input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: #7eb8b0;
+      cursor: pointer;
+    }
+    .publish-toggle label {
+      font-size: 14px;
+      color: #ccc;
+      cursor: pointer;
+    }
+
+    /* Article list */
+    .articles-list { display: flex; flex-direction: column; gap: 12px; }
+    .article-row {
+      background: #111;
+      border: 1px solid #2a2a2a;
+      border-radius: 4px;
+      padding: 20px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .article-thumb {
+      width: 80px;
+      height: 48px;
+      background: #1a1a1a;
+      border-radius: 3px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .article-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .article-info { flex: 1; min-width: 0; }
+    .article-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #f0f0f0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .article-meta {
+      font-size: 12px;
+      color: #666;
+      margin-top: 4px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 2px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+    }
+    .badge-pub { background: #1a3a2a; color: #7eb8b0; }
+    .badge-draft { background: #2a2a1a; color: #888; }
+    .article-actions { display: flex; gap: 8px; flex-shrink: 0; }
+    .empty-msg {
+      text-align: center;
+      color: #555;
+      padding: 60px 0;
+      font-size: 15px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Login screen -->
+<div id="login-screen">
+  <div class="login-box">
+    <h1>PotenDogs <span>Admin</span></h1>
+    <form id="login-form">
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="login-email" autocomplete="email" required>
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="login-password" autocomplete="current-password" required>
+      </div>
+      <p class="error-msg" id="login-error"></p>
+      <button type="submit" class="btn btn-primary btn-full">Sign In</button>
+    </form>
+  </div>
+</div>
+
+<!-- Admin screen -->
+<div id="admin-screen">
+  <div class="admin-header">
+    <h1>PotenDogs News Admin</h1>
+    <button class="btn btn-secondary" id="logout-btn">Sign Out</button>
+  </div>
+
+  <div class="admin-wrap">
+    <!-- Article form -->
+    <div class="section-header">
+      <h2 id="form-heading">Articles</h2>
+      <button class="btn btn-primary" id="new-article-btn">+ New Article</button>
+    </div>
+
+    <form id="article-form">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Title</label>
+          <input type="text" id="art-title" placeholder="Article title" required>
+        </div>
+        <div class="form-group">
+          <label>Date</label>
+          <input type="date" id="art-date" required>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Image URL</label>
+        <input type="text" id="art-image" placeholder="https://... or post-images/filename.jpg">
+      </div>
+      <div class="form-group">
+        <label>Excerpt (short summary)</label>
+        <textarea id="art-excerpt" rows="2" placeholder="Brief summary shown on the news card..."></textarea>
+      </div>
+      <div class="form-group">
+        <label>Content</label>
+        <textarea id="art-content" rows="8" placeholder="Full article content..."></textarea>
+      </div>
+      <div class="publish-toggle">
+        <input type="checkbox" id="art-published" checked>
+        <label for="art-published">Published (visible on news page)</label>
+      </div>
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Save Article</button>
+        <button type="button" class="btn btn-secondary" id="cancel-btn">Cancel</button>
+      </div>
+      <input type="hidden" id="art-id">
+    </form>
+
+    <!-- Article list -->
+    <div class="articles-list" id="articles-list">
+      <p class="empty-msg">Loading...</p>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
+  import { getFirestore, collection, getDocs, addDoc, updateDoc, deleteDoc, doc, orderBy, query, Timestamp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js";
+  import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBJzQ7se2nnWy4PmXTymM6mUytRTqS5p_k",
+    authDomain: "potendogs-news.firebaseapp.com",
+    projectId: "potendogs-news",
+    storageBucket: "potendogs-news.firebasestorage.app",
+    messagingSenderId: "145629588211",
+    appId: "1:145629588211:web:0fe6a7373bdff441616586"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  const auth = getAuth(app);
+
+  // ── Auth ──
+  onAuthStateChanged(auth, user => {
+    if (user) {
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('admin-screen').style.display = 'block';
+      loadArticles();
+    } else {
+      document.getElementById('login-screen').style.display = 'flex';
+      document.getElementById('admin-screen').style.display = 'none';
+    }
+  });
+
+  document.getElementById('login-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const email = document.getElementById('login-email').value;
+    const password = document.getElementById('login-password').value;
+    const errEl = document.getElementById('login-error');
+    errEl.textContent = '';
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch {
+      errEl.textContent = 'Incorrect email or password.';
+    }
+  });
+
+  document.getElementById('logout-btn').addEventListener('click', () => signOut(auth));
+
+  // ── Article form ──
+  const articleForm = document.getElementById('article-form');
+  const newBtn = document.getElementById('new-article-btn');
+  const cancelBtn = document.getElementById('cancel-btn');
+
+  newBtn.addEventListener('click', () => {
+    resetForm();
+    articleForm.classList.add('visible');
+    document.getElementById('form-heading').textContent = 'New Article';
+    newBtn.style.display = 'none';
+  });
+
+  cancelBtn.addEventListener('click', () => {
+    articleForm.classList.remove('visible');
+    document.getElementById('form-heading').textContent = 'Articles';
+    newBtn.style.display = '';
+    resetForm();
+  });
+
+  function resetForm() {
+    document.getElementById('art-id').value = '';
+    document.getElementById('art-title').value = '';
+    document.getElementById('art-date').value = new Date().toISOString().split('T')[0];
+    document.getElementById('art-image').value = '';
+    document.getElementById('art-excerpt').value = '';
+    document.getElementById('art-content').value = '';
+    document.getElementById('art-published').checked = true;
+  }
+
+  articleForm.addEventListener('submit', async e => {
+    e.preventDefault();
+    const id = document.getElementById('art-id').value;
+    const dateStr = document.getElementById('art-date').value;
+    const data = {
+      title: document.getElementById('art-title').value.trim(),
+      date: Timestamp.fromDate(new Date(dateStr)),
+      imageUrl: document.getElementById('art-image').value.trim(),
+      excerpt: document.getElementById('art-excerpt').value.trim(),
+      content: document.getElementById('art-content').value.trim(),
+      published: document.getElementById('art-published').checked,
+      updatedAt: Timestamp.now()
+    };
+
+    try {
+      if (id) {
+        await updateDoc(doc(db, 'articles', id), data);
+      } else {
+        data.createdAt = Timestamp.now();
+        await addDoc(collection(db, 'articles'), data);
+      }
+      cancelBtn.click();
+      loadArticles();
+    } catch (err) {
+      alert('Failed to save article: ' + err.message);
+    }
+  });
+
+  // ── Article list ──
+  async function loadArticles() {
+    const list = document.getElementById('articles-list');
+    list.innerHTML = '<p class="empty-msg">Loading...</p>';
+    try {
+      const q = query(collection(db, 'articles'), orderBy('date', 'desc'));
+      const snapshot = await getDocs(q);
+      if (snapshot.empty) {
+        list.innerHTML = '<p class="empty-msg">No articles yet. Click "+ New Article" to get started.</p>';
+        return;
+      }
+      list.innerHTML = '';
+      snapshot.forEach(docSnap => {
+        const a = { id: docSnap.id, ...docSnap.data() };
+        const row = document.createElement('div');
+        row.className = 'article-row';
+        const dateStr = a.date ? (a.date.toDate ? a.date.toDate() : new Date(a.date)).toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' }) : '';
+        row.innerHTML = `
+          <div class="article-thumb">
+            ${a.imageUrl ? `<img src="${a.imageUrl}" alt="">` : ''}
+          </div>
+          <div class="article-info">
+            <div class="article-title">${a.title}</div>
+            <div class="article-meta">${dateStr} &nbsp;·&nbsp; <span class="badge ${a.published !== false ? 'badge-pub' : 'badge-draft'}">${a.published !== false ? 'Published' : 'Draft'}</span></div>
+          </div>
+          <div class="article-actions">
+            <button class="btn btn-secondary" data-edit="${a.id}">Edit</button>
+            <button class="btn btn-danger" data-delete="${a.id}">Delete</button>
+          </div>`;
+        list.appendChild(row);
+      });
+
+      list.querySelectorAll('[data-edit]').forEach(btn => {
+        btn.addEventListener('click', () => editArticle(btn.dataset.edit));
+      });
+      list.querySelectorAll('[data-delete]').forEach(btn => {
+        btn.addEventListener('click', () => deleteArticle(btn.dataset.delete));
+      });
+    } catch (err) {
+      list.innerHTML = '<p class="empty-msg">Failed to load articles.</p>';
+      console.error(err);
+    }
+  }
+
+  async function editArticle(id) {
+    const snapshot = await getDocs(collection(db, 'articles'));
+    let articleData = null;
+    snapshot.forEach(d => { if (d.id === id) articleData = { id: d.id, ...d.data() }; });
+    if (!articleData) return;
+
+    resetForm();
+    document.getElementById('art-id').value = articleData.id;
+    document.getElementById('art-title').value = articleData.title || '';
+    const d = articleData.date ? (articleData.date.toDate ? articleData.date.toDate() : new Date(articleData.date)) : new Date();
+    document.getElementById('art-date').value = d.toISOString().split('T')[0];
+    document.getElementById('art-image').value = articleData.imageUrl || '';
+    document.getElementById('art-excerpt').value = articleData.excerpt || '';
+    document.getElementById('art-content').value = articleData.content || '';
+    document.getElementById('art-published').checked = articleData.published !== false;
+
+    articleForm.classList.add('visible');
+    document.getElementById('form-heading').textContent = 'Edit Article';
+    newBtn.style.display = 'none';
+    articleForm.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  async function deleteArticle(id) {
+    if (!confirm('Delete this article? This cannot be undone.')) return;
+    try {
+      await deleteDoc(doc(db, 'articles', id));
+      loadArticles();
+    } catch (err) {
+      alert('Failed to delete: ' + err.message);
+    }
+  }
+</script>
+</body>
+</html>
