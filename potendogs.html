@@ -357,27 +357,39 @@
        GALLERY SECTION
     ══════════════════════════════════════════ */
     #gallery {
-      padding: 80px 24px 100px;
+      padding: 60px 24px 60px;
     }
-    .gallery-grid {
-      max-width: 740px;
+    .gallery-cover {
+      max-width: 860px;
       margin: 40px auto 0;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-    }
-    .gallery-thumb {
       cursor: pointer;
       overflow: hidden;
       aspect-ratio: 16/9;
+      position: relative;
     }
-    .gallery-thumb img {
+    .gallery-cover img {
       width: 100%;
       height: 100%;
       object-fit: cover;
       transition: transform 0.3s;
+      display: block;
     }
-    .gallery-thumb:hover img { transform: scale(1.04); }
+    .gallery-cover:hover img { transform: scale(1.02); }
+    .gallery-cover-hint {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.25);
+      opacity: 0;
+      transition: opacity 0.2s;
+      color: #fff;
+      font-size: 15px;
+      letter-spacing: 0.08em;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    .gallery-cover:hover .gallery-cover-hint { opacity: 1; }
 
     /* ── Lightbox ── */
     #lightbox {
@@ -656,13 +668,9 @@
 <section id="gallery" class="grain-box">
   <h2 class="section-title">Gallery</h2>
   <div class="divider"></div>
-  <div class="gallery-grid">
-    <div class="gallery-thumb" onclick="openLightbox(0)">
-      <img src="post-images/1ab44f_301e113c766f4b4f9dfd07381402f4ee~mv2.jpg" alt="Gallery 1" loading="lazy">
-    </div>
-    <div class="gallery-thumb" onclick="openLightbox(1)">
-      <img src="post-images/1ab44f_448e80837af84bfe9f40b3bd3a15b7be~mv2.jpg" alt="Gallery 2" loading="lazy">
-    </div>
+  <div class="gallery-cover" onclick="openLightbox(0)">
+    <img src="post-images/PotenDogsGellery/윈도우, 컨트롤 5.jpg" alt="Gallery" loading="lazy">
+    <div class="gallery-cover-hint">View Gallery</div>
   </div>
 </section>
 
@@ -701,7 +709,7 @@
 
 <!-- ── Footer ── -->
 <footer class="grain-box">
-  <img src="post-images/1ab44f_85c42d5e2a684344afe9b6f1d771074f~mv2.png" alt="RetroBot">
+  <a href="https://retrobot.co.kr" target="_blank"><img src="post-images/1ab44f_85c42d5e2a684344afe9b6f1d771074f~mv2.png" alt="RetroBot"></a>
   <p>&copy; 2021 RetroBot Inc. All Rights Reserved.</p>
 </footer>
 
@@ -715,8 +723,42 @@
 
 <script>
   const galleryImages = [
-    'post-images/1ab44f_301e113c766f4b4f9dfd07381402f4ee~mv2.jpg',
-    'post-images/1ab44f_448e80837af84bfe9f40b3bd3a15b7be~mv2.jpg'
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 5.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 2.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 9.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 12.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 14.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 19.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 20.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 21.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 24.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 28.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 30.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 32.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 33.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 36.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 38.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 46.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 47.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 50.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 53.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 60.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 66.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 71.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 77.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 78.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 80.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 82.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 84.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 85.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 89.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 92.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 94.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 95.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 99.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 101.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 106.jpg',
+    'post-images/PotenDogsGellery/윈도우, 컨트롤 110.jpg'
   ];
   let currentIndex = 0;
 
