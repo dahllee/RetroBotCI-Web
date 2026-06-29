@@ -4,6 +4,80 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Admin — PotenDogs News</title>
+  <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+  <style>
+    /* Quill dark theme */
+    .ql-toolbar { background: #1e1e1e; border-color: #333 !important; border-radius: 4px 4px 0 0; }
+    .ql-container { background: #141414; border-color: #333 !important; border-radius: 0 0 4px 4px; color: #f0f0f0; font-size: 15px; min-height: 220px; }
+    .ql-editor { min-height: 220px; }
+    #quill-editor { max-width: 688px; }
+    .ql-editor img { max-width: 100%; margin: 12px 0; }
+    .ql-editor .ql-imagepair::before { content:''; flex:1; background-image:var(--i1); background-size:cover; background-position:center; }
+    .ql-editor .ql-imagepair::after  { content:''; flex:1; background-image:var(--i2); background-size:cover; background-position:center; }
+    .ql-snow .ql-stroke { stroke: #aaa !important; }
+    .ql-snow .ql-fill { fill: #aaa !important; }
+    .ql-snow .ql-picker { color: #aaa !important; }
+    .ql-snow .ql-picker-options { background: #1e1e1e; border-color: #333; }
+    .ql-snow .ql-tooltip { background: #1e1e1e; border-color: #333; color: #ccc; }
+    .ql-snow .ql-tooltip input { background: #111; border-color: #444; color: #f0f0f0; }
+
+    /* Image options panel */
+    #img-options-panel {
+      display: none; position: fixed; inset: 0; z-index: 99999;
+      background: rgba(0,0,0,0.6); align-items: center; justify-content: center;
+    }
+    #img-options-panel.open { display: flex; }
+    .img-options-box {
+      background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 24px; width: 400px;
+    }
+    .img-options-title { font-size: 13px; color: #aaa; margin-bottom: 16px; }
+    .img-option-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
+    .img-option-btn {
+      background: #111; border: 1px solid #2a2a2a; border-radius: 6px;
+      padding: 12px 8px; cursor: pointer; color: #777; text-align: center;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .img-option-btn:hover { border-color: #888; color: #fff; }
+    .img-option-btn .opt-label { font-size: 11px; margin-top: 8px; }
+    .img-option-diagram { display: flex; gap: 3px; height: 28px; align-items: center; justify-content: center; }
+    .opt-img { background: #555; border-radius: 2px; height: 100%; }
+    .opt-txt { display: flex; flex-direction: column; gap: 3px; justify-content: center; }
+    .opt-txt span { background: #333; border-radius: 1px; height: 4px; display: block; }
+    #img-options-cancel {
+      width: 100%; padding: 8px; background: none; border: 1px solid #2a2a2a;
+      color: #555; border-radius: 4px; cursor: pointer; font-size: 12px;
+    }
+    #img-options-cancel:hover { color: #aaa; border-color: #444; }
+
+    /* Image edit toolbar */
+    #img-edit-toolbar {
+      display: none;
+      position: fixed;
+      z-index: 99998;
+      background: #1a1a1a;
+      border: 1px solid #444;
+      border-radius: 6px;
+      padding: 6px 8px;
+      gap: 4px;
+      align-items: center;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    }
+    #img-edit-toolbar.open { display: flex; }
+    .img-edit-btn {
+      background: none;
+      border: 1px solid #333;
+      border-radius: 4px;
+      color: #888;
+      font-size: 10px;
+      padding: 4px 7px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .img-edit-btn:hover { color: #fff; border-color: #888; }
+    .img-edit-btn.active { color: #7eb8b0; border-color: #7eb8b0; }
+    .img-edit-sep { width: 1px; height: 20px; background: #333; margin: 0 2px; }
+  </style>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -248,6 +322,7 @@
       <h2 id="form-heading">Articles</h2>
       <div style="display:flex;gap:10px;align-items:center;">
         <button class="btn btn-secondary" id="import-btn" title="Import original articles from Wix">Import Original Articles</button>
+        <button class="btn btn-secondary" id="migrate-btn" title="Move base64 images to GitHub">Migrate Images → GitHub</button>
         <button class="btn btn-primary" id="new-article-btn">+ New Article</button>
       </div>
     </div>
@@ -274,7 +349,7 @@
       </div>
       <div class="form-group">
         <label>Content</label>
-        <textarea id="art-content" rows="8" placeholder="Full article content..."></textarea>
+        <div id="quill-editor"></div>
       </div>
       <div class="publish-toggle">
         <input type="checkbox" id="art-published" checked>
@@ -293,6 +368,347 @@
     </div>
   </div>
 </div>
+
+<div id="img-edit-toolbar">
+  <button class="img-edit-btn" data-width="100%" data-float="none" data-margin="16px 0">전체</button>
+  <div class="img-edit-sep"></div>
+  <button class="img-edit-btn" data-width="50%" data-float="left" data-margin="0 14px 8px 0">←50%</button>
+  <button class="img-edit-btn" data-width="50%" data-float="right" data-margin="0 0 8px 14px">50%→</button>
+  <button class="img-edit-btn" data-width="50%" data-float="none" data-margin="16px auto">중50%</button>
+  <button class="img-edit-btn" data-width="30%" data-float="left" data-margin="0 14px 8px 0">←30%</button>
+  <button class="img-edit-btn" data-width="30%" data-float="right" data-margin="0 0 8px 14px">30%→</button>
+  <button class="img-edit-btn" data-width="30%" data-float="none" data-margin="16px auto">중30%</button>
+  <div class="img-edit-sep"></div>
+  <button class="img-edit-btn" id="img-edit-delete" style="color:#e06c6c;border-color:#5a2a2a">삭제</button>
+</div>
+
+<div id="img-options-panel">
+  <div class="img-options-box">
+    <p class="img-options-title">이미지 레이아웃 선택</p>
+    <div class="img-option-grid">
+      <button class="img-option-btn" data-width="100%" data-float="none" data-margin="16px 0">
+        <div class="img-option-diagram"><div class="opt-img" style="width:100%"></div></div>
+        <div class="opt-label">전체 너비</div>
+      </button>
+      <button class="img-option-btn" data-width="50%" data-float="left" data-margin="0 14px 8px 0">
+        <div class="img-option-diagram">
+          <div class="opt-img" style="width:44%"></div>
+          <div class="opt-txt"><span style="width:36px"></span><span style="width:28px"></span><span style="width:32px"></span></div>
+        </div>
+        <div class="opt-label">왼쪽 (50%)</div>
+      </button>
+      <button class="img-option-btn" data-width="50%" data-float="right" data-margin="0 0 8px 14px">
+        <div class="img-option-diagram">
+          <div class="opt-txt"><span style="width:36px"></span><span style="width:28px"></span><span style="width:32px"></span></div>
+          <div class="opt-img" style="width:44%"></div>
+        </div>
+        <div class="opt-label">오른쪽 (50%)</div>
+      </button>
+      <button class="img-option-btn" data-width="50%" data-float="none" data-margin="16px auto">
+        <div class="img-option-diagram" style="justify-content:center;">
+          <div class="opt-img" style="width:44%"></div>
+        </div>
+        <div class="opt-label">중앙 (50%)</div>
+      </button>
+      <button class="img-option-btn" data-width="30%" data-float="left" data-margin="0 14px 8px 0">
+        <div class="img-option-diagram">
+          <div class="opt-img" style="width:30%"></div>
+          <div class="opt-txt"><span style="width:44px"></span><span style="width:36px"></span><span style="width:40px"></span></div>
+        </div>
+        <div class="opt-label">왼쪽 (30%)</div>
+      </button>
+      <button class="img-option-btn" data-width="30%" data-float="right" data-margin="0 0 8px 14px">
+        <div class="img-option-diagram">
+          <div class="opt-txt"><span style="width:44px"></span><span style="width:36px"></span><span style="width:40px"></span></div>
+          <div class="opt-img" style="width:30%"></div>
+        </div>
+        <div class="opt-label">오른쪽 (30%)</div>
+      </button>
+      <button class="img-option-btn" data-width="30%" data-float="none" data-margin="16px auto">
+        <div class="img-option-diagram" style="justify-content:center;">
+          <div class="opt-img" style="width:30%"></div>
+        </div>
+        <div class="opt-label">중앙 (30%)</div>
+      </button>
+      <button class="img-option-btn" id="img-pair-btn" style="grid-column:1/-1;">
+        <div class="img-option-diagram" style="gap:6px;">
+          <div class="opt-img" style="width:46%;height:100%;"></div>
+          <div class="opt-img" style="width:46%;height:100%;"></div>
+        </div>
+        <div class="opt-label">나란히 (2장) — 두 번째 이미지 추가 선택</div>
+      </button>
+    </div>
+    <button id="img-options-cancel">취소</button>
+  </div>
+</div>
+
+<script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
+<script>
+  const GH_TOKEN = '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';
+  const GH_REPO = 'dahllee/PotenDogs';
+
+  // Single image blot: preserves style attribute through Quill's delta round-trips.
+  (function() {
+    const Image = Quill.import('formats/image');
+    class StyledImage extends Image {
+      static create(value) {
+        const src = (value && typeof value === 'object') ? value.src : value;
+        const node = super.create(src);
+        const style = (value && typeof value === 'object') ? value.style : null;
+        if (style) node.setAttribute('style', style);
+        return node;
+      }
+      static value(node) {
+        return { src: node.getAttribute('src') || '', style: node.getAttribute('style') || '' };
+      }
+      static formats(node) {
+        const f = super.formats(node);
+        const style = node.getAttribute('style');
+        if (style) f.style = style;
+        return f;
+      }
+      format(name, value) {
+        if (name === 'style') {
+          if (value) this.domNode.setAttribute('style', value);
+          else this.domNode.removeAttribute('style');
+        } else { super.format(name, value); }
+      }
+    }
+    StyledImage.blotName = 'image';
+    StyledImage.tagName = 'IMG';
+    Quill.register(StyledImage, true);
+  })();
+
+  // Image pair blot: two images in a flex row.
+  // URLs stored in data-src1/data-src2 so they survive Quill's child-node normalization.
+  (function() {
+    const BlockEmbed = Quill.import('blots/block/embed');
+    class ImagePairBlot extends BlockEmbed {
+      static create(value) {
+        const wrap = document.createElement('div');
+        wrap.classList.add('ql-imagepair');
+        wrap.setAttribute('contenteditable', 'false');
+        wrap.setAttribute('data-src1', value.src1 || '');
+        wrap.setAttribute('data-src2', value.src2 || '');
+        wrap.style.display = 'flex';
+        wrap.style.gap = '4px';
+        wrap.style.margin = '12px 0';
+        wrap.style.overflow = 'hidden';
+        const s1 = (value.src1 || '').replace(/'/g, '%27');
+        const s2 = (value.src2 || '').replace(/'/g, '%27');
+        wrap.style.setProperty('--i1', `url('${s1}')`);
+        wrap.style.setProperty('--i2', `url('${s2}')`);
+        return wrap;
+      }
+      static value(node) {
+        // Prefer data attributes (survive even if child imgs are stripped by Quill)
+        const src1 = node.getAttribute('data-src1') || '';
+        const src2 = node.getAttribute('data-src2') || '';
+        if (src1 || src2) return { src1, src2 };
+        const imgs = node.querySelectorAll('img');
+        return {
+          src1: imgs[0] ? imgs[0].getAttribute('src') : '',
+          src2: imgs[1] ? imgs[1].getAttribute('src') : ''
+        };
+      }
+    }
+    ImagePairBlot.blotName = 'imagepair';
+    ImagePairBlot.tagName = 'div';
+    ImagePairBlot.className = 'ql-imagepair';
+    Quill.register(ImagePairBlot);
+  })();
+
+  // Add actual <img> children to pair blots AFTER Quill has settled them in Parchment.
+  // Settled leaf blots (DATA_KEY set) don't have their DOM children stripped by Quill's optimizer.
+  window.addPairImgs = function() {
+    window.quill.root.querySelectorAll('div.ql-imagepair').forEach(div => {
+      const src1 = div.getAttribute('data-src1');
+      const src2 = div.getAttribute('data-src2');
+      if (!src1 && !src2) return;
+      div.innerHTML = '';
+      [src1, src2].forEach(src => {
+        if (!src) return;
+        const img = document.createElement('img');
+        img.src = src;
+        img.style.cssText = 'width:50%;min-width:0;flex-shrink:0;object-fit:cover;display:block;';
+        div.appendChild(img);
+      });
+    });
+  };
+
+  async function uploadToGitHub(file) {
+    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const filename = `${Date.now()}.${ext}`;
+    const path = `post-images/news/${filename}`;
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    const res = await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${path}`, {
+      method: 'PUT',
+      headers: { 'Authorization': `token ${GH_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: `Upload image ${filename}`, content: base64 })
+    });
+    if (!res.ok) { const e = await res.json(); throw new Error(e.message || 'Upload failed'); }
+    const data = await res.json();
+    return data.content.download_url;
+  }
+
+  window.quill = new Quill('#quill-editor', {
+    theme: 'snow',
+    modules: {
+      toolbar: {
+        container: [
+          ['bold', 'italic', 'underline'],
+          [{ list: 'ordered' }, { list: 'bullet' }],
+          ['image'],
+          ['clean']
+        ],
+        handlers: {
+          image: function() {
+            const quill = this.quill;
+            const fileInput = document.createElement('input');
+            fileInput.setAttribute('type', 'file');
+            fileInput.setAttribute('accept', 'image/*');
+            fileInput.click();
+            fileInput.onchange = () => {
+              const file = fileInput.files[0];
+              if (!file) return;
+              const range = quill.getSelection(true);
+              quill.disable();
+              quill.insertText(range.index, ' [업로드 중...] ', { color: '#7eb8b0' });
+              uploadToGitHub(file)
+                .then(url => {
+                  quill.deleteText(range.index, ' [업로드 중...] '.length);
+                  quill.enable();
+                  const panel = document.getElementById('img-options-panel');
+                  panel.classList.add('open');
+                  panel.querySelectorAll('.img-option-btn').forEach(btn => {
+                    btn.onclick = () => {
+                      const width = btn.dataset.width;
+                      const floatVal = btn.dataset.float;
+                      const margin = btn.dataset.margin;
+                      const display = floatVal !== 'none' ? 'inline' : 'block';
+                      const styleStr = `width:${width};float:${floatVal};margin:${margin};display:${display};`;
+                      quill.insertEmbed(range.index, 'image', { src: url, style: styleStr });
+                      quill.setSelection(range.index + 1);
+                      panel.classList.remove('open');
+                    };
+                  });
+                  document.getElementById('img-options-cancel').onclick = () => panel.classList.remove('open');
+
+                  document.getElementById('img-pair-btn').onclick = () => {
+                    panel.classList.remove('open');
+                    const statusEl = document.getElementById('import-status');
+                    const fi2 = document.createElement('input');
+                    fi2.type = 'file'; fi2.accept = 'image/*';
+                    fi2.onchange = () => {
+                      const f2 = fi2.files[0];
+                      if (!f2) return;
+                      quill.disable();
+                      statusEl.textContent = '두 번째 이미지 업로드 중...';
+                      uploadToGitHub(f2)
+                        .then(url2 => {
+                          quill.enable();
+                          statusEl.textContent = '';
+                          quill.insertEmbed(range.index, 'imagepair', { src1: url, src2: url2 });
+                          quill.setSelection(range.index + 1);
+                          setTimeout(window.addPairImgs, 200);
+                        })
+                        .catch(err => {
+                          quill.enable();
+                          statusEl.textContent = '';
+                          alert('업로드 실패: ' + err.message);
+                        });
+                    };
+                    fi2.click();
+                  };
+                })
+                .catch(err => {
+                  quill.deleteText(range.index, ' [업로드 중...] '.length);
+                  quill.enable();
+                  alert('이미지 업로드 실패: ' + err.message);
+                });
+            };
+          }
+        }
+      }
+    },
+    placeholder: '기사 전문을 입력하세요...'
+  });
+
+  // Strip formatting on paste
+  window.quill.clipboard.addMatcher(Node.ELEMENT_NODE, (node, delta) => {
+    delta.ops = delta.ops.map(op => {
+      if (op.attributes) {
+        delete op.attributes.bold;
+        delete op.attributes.underline;
+        delete op.attributes.color;
+        delete op.attributes.background;
+        delete op.attributes.font;
+        delete op.attributes.size;
+        delete op.attributes.strike;
+        delete op.attributes.script;
+        delete op.attributes.indent;
+        delete op.attributes.align;
+      }
+      return op;
+    });
+    return delta;
+  });
+
+  // Image click → edit toolbar
+  (function() {
+    const toolbar = document.getElementById('img-edit-toolbar');
+    let activeImg = null;
+
+    window.quill.root.addEventListener('click', e => {
+      if (e.target.tagName === 'IMG') {
+        activeImg = e.target;
+        const rect = activeImg.getBoundingClientRect();
+        toolbar.style.left = rect.left + 'px';
+        toolbar.style.top = (rect.top - 44) + 'px';
+        toolbar.querySelectorAll('.img-edit-btn:not(#img-edit-delete)').forEach(btn => {
+          btn.classList.toggle('active',
+            activeImg.style.width === btn.dataset.width &&
+            activeImg.style.float === btn.dataset.float
+          );
+        });
+        toolbar.classList.add('open');
+      } else {
+        toolbar.classList.remove('open');
+        activeImg = null;
+      }
+    });
+
+    toolbar.querySelectorAll('.img-edit-btn:not(#img-edit-delete)').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (!activeImg) return;
+        const display = btn.dataset.float !== 'none' ? 'inline' : 'block';
+        const styleStr = `width:${btn.dataset.width};float:${btn.dataset.float};margin:${btn.dataset.margin};display:${display};`;
+        activeImg.setAttribute('style', styleStr);
+        toolbar.querySelectorAll('.img-edit-btn:not(#img-edit-delete)').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+    });
+
+    document.getElementById('img-edit-delete').addEventListener('click', () => {
+      if (!activeImg) return;
+      activeImg.remove();
+      toolbar.classList.remove('open');
+      activeImg = null;
+    });
+
+    document.addEventListener('click', e => {
+      if (!toolbar.contains(e.target) && e.target.tagName !== 'IMG') {
+        toolbar.classList.remove('open');
+        activeImg = null;
+      }
+    });
+  })();
+</script>
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
@@ -364,12 +780,28 @@
     document.getElementById('art-date').value = new Date().toISOString().split('T')[0];
     document.getElementById('art-image').value = '';
     document.getElementById('art-excerpt').value = '';
-    document.getElementById('art-content').value = '';
+    window.quill.root.innerHTML = '';
     document.getElementById('art-published').checked = true;
   }
 
   articleForm.addEventListener('submit', async e => {
     e.preventDefault();
+    // Clone editor DOM and convert pair blots → viewer format (img children) before saving
+    const editorClone = window.quill.root.cloneNode(true);
+    editorClone.querySelectorAll('div.ql-imagepair').forEach(div => {
+      const src1 = div.getAttribute('data-src1') || '';
+      const src2 = div.getAttribute('data-src2') || '';
+      div.style.cssText = 'display:flex;gap:4px;margin:12px 0;overflow:hidden;';
+      div.innerHTML = '';
+      [src1, src2].forEach(src => {
+        if (!src) return;
+        const img = document.createElement('img');
+        img.setAttribute('src', src);
+        img.style.cssText = 'width:50%;min-width:0;flex-shrink:0;object-fit:cover;display:block;';
+        div.appendChild(img);
+      });
+    });
+    const rawContent = editorClone.innerHTML;
     const id = document.getElementById('art-id').value;
     const dateStr = document.getElementById('art-date').value;
     const data = {
@@ -377,7 +809,7 @@
       date: Timestamp.fromDate(new Date(dateStr)),
       imageUrl: document.getElementById('art-image').value.trim(),
       excerpt: document.getElementById('art-excerpt').value.trim(),
-      content: document.getElementById('art-content').value.trim(),
+      content: rawContent === '<p><br></p>' ? '' : rawContent,
       published: document.getElementById('art-published').checked,
       updatedAt: Timestamp.now()
     };
@@ -453,7 +885,26 @@
     document.getElementById('art-date').value = d.toISOString().split('T')[0];
     document.getElementById('art-image').value = articleData.imageUrl || '';
     document.getElementById('art-excerpt').value = articleData.excerpt || '';
-    document.getElementById('art-content').value = articleData.content || '';
+    const rawContent = articleData.content || '';
+    if (rawContent) {
+      // Strip img children from pair divs before clipboard conversion,
+      // otherwise clipboard processes each <img> as a separate image block.
+      const doc = new DOMParser().parseFromString(rawContent, 'text/html');
+      // Match by class OR by data-src1/data-src2 (old saves may lack the class)
+      doc.querySelectorAll('div.ql-imagepair, div[data-src1], div[data-src2]').forEach(div => {
+        const imgs = div.querySelectorAll('img');
+        const src1 = div.getAttribute('data-src1') || (imgs[0] ? imgs[0].getAttribute('src') : '');
+        const src2 = div.getAttribute('data-src2') || (imgs[1] ? imgs[1].getAttribute('src') : '');
+        div.classList.add('ql-imagepair');
+        div.setAttribute('data-src1', src1);
+        div.setAttribute('data-src2', src2);
+        div.innerHTML = '';
+      });
+      window.quill.clipboard.dangerouslyPasteHTML(doc.body.innerHTML);
+      setTimeout(window.addPairImgs, 200);
+    } else {
+      window.quill.root.innerHTML = '';
+    }
     document.getElementById('art-published').checked = articleData.published !== false;
 
     articleForm.classList.add('visible');
@@ -526,6 +977,60 @@
       loadArticles();
     } catch (err) {
       statusEl.textContent = `Error after ${count} articles: ${err.message}`;
+
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById('migrate-btn').addEventListener('click', async () => {
+    if (!confirm('모든 기사의 base64 이미지를 GitHub로 옮깁니다. 계속할까요?')) return;
+    const statusEl = document.getElementById('import-status');
+    const btn = document.getElementById('migrate-btn');
+    btn.disabled = true;
+    statusEl.textContent = '마이그레이션 시작...';
+
+    try {
+      const snapshot = await getDocs(collection(db, 'articles'));
+      let updated = 0;
+      for (const docSnap of snapshot.docs) {
+        const data = docSnap.data();
+        let content = data.content || '';
+        if (!content.includes('data:image')) continue;
+
+        const parser = new DOMParser();
+        const dom = parser.parseFromString(content, 'text/html');
+        const imgs = dom.querySelectorAll('img[src^="data:"]');
+        if (imgs.length === 0) continue;
+
+        statusEl.textContent = `"${data.title}" 처리 중... (${imgs.length}개 이미지)`;
+
+        for (const img of imgs) {
+          const dataUrl = img.getAttribute('src');
+          const mime = dataUrl.match(/data:([^;]+);/)?.[1] || 'image/jpeg';
+          const ext = mime.split('/')[1].replace('jpeg', 'jpg');
+          const base64 = dataUrl.split(',')[1];
+          const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+          const path = `post-images/news/${filename}`;
+
+          const res = await fetch(`https://api.github.com/repos/${GH_REPO}/contents/${path}`, {
+            method: 'PUT',
+            headers: { 'Authorization': `token ${GH_TOKEN}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: `Migrate image ${filename}`, content: base64 })
+          });
+          if (!res.ok) throw new Error('GitHub 업로드 실패');
+          const ghData = await res.json();
+          img.setAttribute('src', ghData.content.download_url);
+        }
+
+        const newContent = dom.body.innerHTML;
+        await updateDoc(doc(db, 'articles', docSnap.id), { content: newContent, updatedAt: Timestamp.now() });
+        updated++;
+      }
+      statusEl.textContent = `✓ ${updated}개 기사 마이그레이션 완료.`;
+      loadArticles();
+    } catch (err) {
+      statusEl.textContent = '오류: ' + err.message;
     } finally {
       btn.disabled = false;
     }
