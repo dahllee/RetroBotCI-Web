@@ -23,8 +23,7 @@
       position: fixed;
       top: 0; left: 0; right: 0;
       z-index: 1000;
-      background: rgba(10, 12, 18, 0.88);
-      backdrop-filter: blur(6px);
+      background: #252525;
     }
     nav {
       display: flex;
@@ -36,12 +35,12 @@
     nav a {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       font-size: 14px;
-      font-weight: 300;
-      letter-spacing: 0.04em;
+      font-weight: 500;
+      letter-spacing: -0.4px;
       color: #888;
       transition: color 0.2s;
     }
-    nav a:hover, nav a.active { color: #fff; font-weight: 400; }
+    nav a:hover, nav a.active { color: #fff; }
 
     /* ── Section helpers ── */
     .section-title {
@@ -193,7 +192,7 @@
       max-width: 760px;
       margin: 0 auto -22px;
     }
-    #background .concept-art img { width: 99%; }
+    #background .concept-art img { width: 99%; aspect-ratio: 3696 / 2920; }
     #background .bg-text {
       max-width: 760px;
       margin: 0 auto;
@@ -296,44 +295,45 @@
       gap: 100px;
     }
     .faction-hex {
-      display: flex;
-      align-items: flex-start;
-    }
-    .hex-col {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .hex-col.pd-stagger { padding-top: 188px; }
-    .cloud-card { transform: translate(25px, 5px); }
-    .munggou-card { transform: translateY(130px); }
-    .radar-card   { transform: translate(25px, 135px); }
-    .fufu-card    { transform: translateY(260px); }
-    .bullet-card  { transform: translate(25px, 265px); }
-    .hex-col.gf-stagger { padding-top: 188px; }
-    .gaelong-card { transform: translate(-25px,   5px); }
-    .dogu-card    { transform: translateY(130px); }
-    .biscuit-card { transform: translate(-25px, 135px); }
-    .rutger-card  { transform: translateY(260px); }
-    .gwyneth-card { transform: translate(-25px, 265px); }
-    /* overlap the two sub-columns horizontally to match hex honeycomb */
-    .hex-col:last-child { margin-left: -80px; z-index: 1; }
-    .char-item {
       position: relative;
+      width: 352px;
+      height: 1213px;
+    }
+    .cloud-card  { position: absolute; left: 25px;  top: 193px; pointer-events: none; }
+    .radar-card  { position: absolute; left: 25px;  top: 579px; pointer-events: none; }
+    .bullet-card { position: absolute; left: 25px;  top: 965px; pointer-events: none; }
+    .kai-card    { position: absolute; left: 136px; top: 0;     z-index: 1; pointer-events: none; }
+    .munggou-card{ position: absolute; left: 136px; top: 386px; z-index: 1; pointer-events: none; }
+    .fufu-card   { position: absolute; left: 136px; top: 772px; z-index: 1; pointer-events: none; }
+    .garrius-card{ position: absolute; left: 0;     top: 0;     pointer-events: none; }
+    .dogu-card   { position: absolute; left: 0;     top: 386px; pointer-events: none; }
+    .rutger-card { position: absolute; left: 0;     top: 772px; pointer-events: none; }
+    .gaelong-card{ position: absolute; left: 111px; top: 193px; z-index: 1; pointer-events: none; }
+    .biscuit-card{ position: absolute; left: 111px; top: 579px; z-index: 1; pointer-events: none; }
+    .gwyneth-card{ position: absolute; left: 111px; top: 965px; z-index: 1; pointer-events: none; }
+    div:has(> .char-item) { transition: transform 0.2s, filter 0.2s; }
+    div:has(> .char-item:hover) {
+      transform: translate(-5px, -5px);
+      filter: drop-shadow(3px 3px 3px black);
+    }
+    .char-item {
+      display: block;
       width: 216px;
       cursor: pointer;
       text-decoration: none;
-      transition: opacity 0.2s;
-      display: block;
+      clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+      pointer-events: auto;
     }
-    .char-item:hover { opacity: 0.8; }
     .char-item img {
       width: 216px;
       height: 248px;
       object-fit: cover;
       display: block;
     }
-    .char-item span {
+    .cloud-card span, .radar-card span, .bullet-card span,
+    .garrius-card span, .dogu-card span, .rutger-card span,
+    .kai-card span, .munggou-card span, .fufu-card span,
+    .gaelong-card span, .biscuit-card span, .gwyneth-card span {
       position: absolute;
       top: 50%;
       transform: translateY(-50%);
@@ -342,13 +342,13 @@
       color: #e0e0e0;
       white-space: nowrap;
     }
-    /* Left col: name floats to the RIGHT into the gap */
-    .hex-col:first-child .char-item span {
+    .cloud-card span, .radar-card span, .bullet-card span,
+    .garrius-card span, .dogu-card span, .rutger-card span {
       left: calc(100% + 12px);
       text-align: left;
     }
-    /* Right col: name floats to the LEFT into the gap */
-    .hex-col:last-child .char-item span {
+    .kai-card span, .munggou-card span, .fufu-card span,
+    .gaelong-card span, .biscuit-card span, .gwyneth-card span {
       right: calc(100% + 12px);
       text-align: right;
     }
@@ -471,18 +471,21 @@
     #contact .email-link:hover { opacity: 0.8; }
 
     /* ── Footer ── */
+    footer.grain-box { background: #252525; }
     footer {
-      padding: 40px 24px 48px;
+      padding: 26px 24px 15px;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 12px;
+      gap: 8px;
     }
     footer img { height: 60px; width: auto; }
     footer p {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       font-size: 13px;
       color: #aaa;
+      position: relative;
+      top: -5px;
     }
   </style>
 </head>
@@ -606,7 +609,7 @@
     for both dogs and humans.</p>
   </div>
   <div class="story-image">
-    <img src="post-images/1ab44f_d8014801df2e46cb9d9ddf2019c9c9e7~mv2.jpg" alt="Kai meets Wonseok" loading="lazy">
+    <img src="post-images/1ab44f_d8014801df2e46cb9d9ddf2019c9c9e7~mv2.jpg" alt="Kai meets Wonseok">
   </div>
 </section>
 
@@ -633,31 +636,23 @@
 
   <!-- Character hex grid -->
   <div class="char-grid">
-    <!-- PodongNet: left col = Cloud,Radar,Bullet (stagger); right col = Kai,Munggou,Fufu -->
+    <!-- PodongNet -->
     <div class="faction-hex">
-      <div class="hex-col pd-stagger">
-        <a class="char-item cloud-card" href="cloud.html"><img src="post-images/1ab44f_7774f5b1aeeb49b0988e2e92bb8ad874~mv2.png" alt="Cloud" loading="lazy"><span>Cloud</span></a>
-        <a class="char-item radar-card" href="radar.html"><img src="post-images/1ab44f_9242a48b4839473b91ced2519ed8a49a~mv2.png" alt="Radar" loading="lazy"><span>Radar</span></a>
-        <a class="char-item bullet-card" href="bullet.html"><img src="post-images/1ab44f_865a599f987b43c8892be9d38ac41ebf~mv2.png" alt="Bullet" loading="lazy"><span>Bullet</span></a>
-      </div>
-      <div class="hex-col">
-        <a class="char-item" href="kai.html"><img src="post-images/1ab44f_05134467ac8a48f08a56e73044ef3318~mv2.png" alt="Kai" loading="lazy"><span>Kai</span></a>
-        <a class="char-item munggou-card" href="munggou.html"><img src="post-images/1ab44f_79df883c78ec4967980892cdd1f53f23~mv2.png" alt="Munggou" loading="lazy"><span>Munggou</span></a>
-        <a class="char-item fufu-card" href="fufu.html"><img src="post-images/1ab44f_1c62453288844cbebfb63fc6dd5ba847~mv2.png" alt="Fufu" loading="lazy"><span>Fufu</span></a>
-      </div>
+      <div class="cloud-card"><a class="char-item" href="cloud.html"><img src="post-images/1ab44f_7774f5b1aeeb49b0988e2e92bb8ad874~mv2.png" alt="Cloud" loading="lazy"></a><span>Cloud</span></div>
+      <div class="radar-card"><a class="char-item" href="radar.html"><img src="post-images/1ab44f_9242a48b4839473b91ced2519ed8a49a~mv2.png" alt="Radar" loading="lazy"></a><span>Radar</span></div>
+      <div class="bullet-card"><a class="char-item" href="bullet.html"><img src="post-images/1ab44f_865a599f987b43c8892be9d38ac41ebf~mv2.png" alt="Bullet" loading="lazy"></a><span>Bullet</span></div>
+      <div class="kai-card"><a class="char-item" href="kai.html"><img src="post-images/1ab44f_05134467ac8a48f08a56e73044ef3318~mv2.png" alt="Kai" loading="lazy"></a><span>Kai</span></div>
+      <div class="munggou-card"><a class="char-item" href="mountain.html"><img src="post-images/1ab44f_79df883c78ec4967980892cdd1f53f23~mv2.png" alt="Mountain" loading="lazy"></a><span>Mountain</span></div>
+      <div class="fufu-card"><a class="char-item" href="marley.html"><img src="post-images/1ab44f_1c62453288844cbebfb63fc6dd5ba847~mv2.png" alt="Marley" loading="lazy"></a><span>Marley</span></div>
     </div>
-    <!-- GoldFang: left col = Garrius,Dogu,Rutger; right col = Gaelong,Biscuit,Gwyneth (stagger) -->
+    <!-- GoldFang -->
     <div class="faction-hex">
-      <div class="hex-col">
-        <a class="char-item" href="garrius.html"><img src="post-images/1ab44f_c393483263e3428083603251f4fd26f3~mv2.png" alt="Garrius" loading="lazy"><span>Garrius</span></a>
-        <a class="char-item dogu-card" href="dogu.html"><img src="post-images/1ab44f_9cd074e31a5e45b59cb528864ecb20c0~mv2.png" alt="Dogu" loading="lazy"><span>Dogu</span></a>
-        <a class="char-item rutger-card" href="rutger.html"><img src="post-images/1ab44f_e434ba0040c4400e9d53a150a95409c2~mv2.png" alt="Rutger" loading="lazy"><span>Rutger</span></a>
-      </div>
-      <div class="hex-col gf-stagger">
-        <a class="char-item gaelong-card" href="guolong.html"><img src="post-images/1ab44f_3ba62d9d6b494adab4b4db63d7578353~mv2.png" alt="Gaelong" loading="lazy"><span>Gaelong</span></a>
-        <a class="char-item biscuit-card" href="biscuit.html"><img src="post-images/1ab44f_c532e7e39c684977bf26fcf1fa778543~mv2.png" alt="Biscuit" loading="lazy"><span>Biscuit</span></a>
-        <a class="char-item gwyneth-card" href="gwyneth.html"><img src="post-images/1ab44f_7d510b4a2cf34e2fb9efbc479ac31a81~mv2.png" alt="Gwyneth" loading="lazy"><span>Gwyneth</span></a>
-      </div>
+      <div class="garrius-card"><a class="char-item" href="garrius.html"><img src="post-images/1ab44f_c393483263e3428083603251f4fd26f3~mv2.png" alt="Garrius" loading="lazy"></a><span>Garrius</span></div>
+      <div class="dogu-card"><a class="char-item" href="caesar.html"><img src="post-images/1ab44f_9cd074e31a5e45b59cb528864ecb20c0~mv2.png" alt="Caesar" loading="lazy"></a><span>Caesar</span></div>
+      <div class="rutger-card"><a class="char-item" href="rutger.html"><img src="post-images/1ab44f_e434ba0040c4400e9d53a150a95409c2~mv2.png" alt="Rutger" loading="lazy"></a><span>Rutger</span></div>
+      <div class="gaelong-card"><a class="char-item" href="draco.html"><img src="post-images/1ab44f_3ba62d9d6b494adab4b4db63d7578353~mv2.png" alt="Draco" loading="lazy"></a><span>Draco</span></div>
+      <div class="biscuit-card"><a class="char-item" href="biscuit.html"><img src="post-images/1ab44f_c532e7e39c684977bf26fcf1fa778543~mv2.png" alt="Biscuit" loading="lazy"></a><span>Biscuit</span></div>
+      <div class="gwyneth-card"><a class="char-item" href="gwyneth.html"><img src="post-images/1ab44f_7d510b4a2cf34e2fb9efbc479ac31a81~mv2.png" alt="Gwyneth" loading="lazy"></a><span>Gwyneth</span></div>
     </div>
   </div>
 </section>
