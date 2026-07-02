@@ -92,6 +92,47 @@
     .work-card-body h3 { font-size: 16px; font-weight: 600; margin-bottom: 5px; }
     .work-card-body p { font-size: 12px; color: #777; letter-spacing: 0.03em; }
 
+    /* ── Hamburger ── */
+    .nav-toggle {
+      display: none;
+      flex-direction: column;
+      gap: 5px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+    }
+    .nav-toggle span {
+      display: block;
+      width: 24px;
+      height: 2px;
+      background: #888;
+      transition: all 0.3s;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 820px) {
+      header { padding: 0 24px; }
+      .nav-toggle { display: flex; }
+      nav {
+        display: none;
+        position: absolute;
+        top: 64px;
+        left: 0; right: 0;
+        flex-direction: column;
+        background: rgba(10,10,10,0.97);
+        padding: 24px 32px;
+        gap: 20px;
+        border-bottom: 1px solid #1e1e1e;
+      }
+      nav.open { display: flex; }
+      .title-section { padding: 100px 24px 40px; }
+      .works-grid { padding: 0 24px 60px; }
+    }
+    @media (max-width: 480px) {
+      .works-grid { grid-template-columns: 1fr; }
+    }
+
     /* ── Footer ── */
     footer {
       border-top: 1px solid #1e1e1e;
@@ -109,7 +150,10 @@
 
 <!-- ── Header ── -->
 <header>
-  <nav>
+  <button class="nav-toggle" aria-label="Toggle menu">
+    <span></span><span></span><span></span>
+  </button>
+  <nav id="main-nav">
     <a href="index.html">Home</a>
     <a href="index.html#works">Works</a>
     <a href="index.html#services">Services</a>
@@ -363,5 +407,11 @@
   <p>&copy; 2021 RetroBot Inc. All Rights Reserved.</p>
 </footer>
 
+<script>
+  const toggle = document.querySelector('.nav-toggle');
+  const nav = document.querySelector('#main-nav');
+  toggle.addEventListener('click', () => nav.classList.toggle('open'));
+  nav.querySelectorAll('a').forEach(a => a.addEventListener('click', () => nav.classList.remove('open')));
+</script>
 </body>
 </html>
