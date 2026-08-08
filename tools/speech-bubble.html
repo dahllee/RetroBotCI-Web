@@ -1,0 +1,1328 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Speech Bubble Generator — RetroBot CI</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      background: #0a0a0a;
+      color: #f0f0f0;
+      line-height: 1.6;
+    }
+    a { color: inherit; text-decoration: none; }
+    img { display: block; max-width: 100%; }
+
+    /* ── Header ── */
+    header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 48px;
+      height: 64px;
+      background: rgba(10,10,10,0.90);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid #1e1e1e;
+    }
+    nav { display: flex; gap: 32px; align-items: center; }
+    nav a {
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: #888;
+      transition: color 0.2s;
+    }
+    nav a:hover { color: #fff; }
+    .nav-toggle {
+      display: none;
+      flex-direction: column;
+      gap: 5px;
+      background: none; border: none; cursor: pointer; padding: 4px;
+    }
+    .nav-toggle span { display: block; width: 24px; height: 2px; background: #888; transition: all 0.3s; }
+
+    /* ── Shared ── */
+    .section-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: #7eb8b0;
+      margin-bottom: 14px;
+    }
+    .section-title {
+      font-size: clamp(28px, 3vw, 42px);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+    }
+    .btn {
+      display: inline-block;
+      padding: 13px 30px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      transition: all 0.2s;
+      border: none;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .btn-primary { background: #7eb8b0; color: #fff; }
+    .btn-primary:hover { background: #5fa09a; }
+    .btn-ghost { border: 1px solid #ef4e23; color: #fff; background: none; }
+    .btn-ghost:hover { background: rgba(239,78,35,0.12); }
+
+    /* ── Layout ── */
+    .page { padding: 112px 48px 64px; }
+    .intro { margin-bottom: 40px; max-width: 720px; }
+    .intro p { font-size: 15px; color: #777; line-height: 1.85; margin-top: 16px; }
+
+    .studio {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 32px;
+      align-items: start;
+    }
+
+    /* ── Controls ── */
+    .panel {
+      background: #0d0d0d;
+      border: 1px solid #1e1e1e;
+      border-radius: 6px;
+      padding: 28px;
+    }
+    .field { margin-bottom: 24px; }
+    .field:last-child { margin-bottom: 0; }
+    .field > label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #666;
+      margin-bottom: 10px;
+    }
+    .field .val { color: #7eb8b0; font-weight: 500; letter-spacing: 0.04em; }
+
+    .chips { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+    .chips.tails { grid-template-columns: repeat(3, 1fr); }
+    .chip {
+      padding: 9px 6px;
+      border: 1px solid #1e1e1e;
+      border-radius: 4px;
+      background: #0a0a0a;
+      color: #888;
+      font-size: 12px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: center;
+    }
+    .chip:hover { border-color: #333; color: #ccc; }
+    .chip[aria-pressed="true"] { border-color: #7eb8b0; color: #fff; background: rgba(126,184,176,0.12); }
+
+    input[type=range] { width: 100%; accent-color: #7eb8b0; }
+    .colors { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .colors label {
+      display: block;
+      font-size: 11px; font-weight: 600; letter-spacing: 0.12em;
+      text-transform: uppercase; color: #666; margin-bottom: 8px;
+    }
+    input[type=color] {
+      width: 100%; height: 38px; padding: 0;
+      border: 1px solid #1e1e1e; border-radius: 4px;
+      background: #0a0a0a; cursor: pointer;
+    }
+
+    /* ── Preview ── */
+    .stage {
+      background: #070707;
+      border: 1px solid #1e1e1e;
+      border-radius: 6px;
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      min-height: 420px;
+    }
+    .stage-bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    /* an explicit display would otherwise beat the [hidden] attribute */
+    .stage-bar[hidden] { display: none; }
+    .btn-sm { padding: 9px 20px; font-size: 12px; }
+    .stage-bar .hint { font-size: 12px; color: #555; letter-spacing: 0.03em; }
+    .canvas-wrap {
+      flex: 1;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 4px;
+      /* checkerboard so transparency is readable */
+      background-color: #141414;
+      background-image:
+        linear-gradient(45deg, #1c1c1c 25%, transparent 25%, transparent 75%, #1c1c1c 75%),
+        linear-gradient(45deg, #1c1c1c 25%, transparent 25%, transparent 75%, #1c1c1c 75%);
+      background-size: 20px 20px;
+      background-position: 0 0, 10px 10px;
+      padding: 20px;
+      overflow: auto;
+    }
+    #preview { max-width: 100%; max-height: 60vh; display: block; }
+    .meta { font-size: 12px; color: #555; letter-spacing: 0.04em; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .note {
+      font-size: 12px; color: #666; line-height: 1.8;
+      border-left: 2px solid #1e1e1e; padding-left: 14px;
+    }
+    .note strong { color: #7eb8b0; font-weight: 600; }
+    #status { font-size: 12px; color: #7eb8b0; min-height: 18px; letter-spacing: 0.04em; }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid #1e1e1e;
+      padding: 48px;
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+    }
+    footer img { height: 40px; width: auto; }
+    footer p { font-size: 12px; color: #444; letter-spacing: 0.03em; }
+
+    /* ── Responsive ── */
+    @media (max-width: 980px) {
+      .studio { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 820px) {
+      header { padding: 0 24px; }
+      .nav-toggle { display: flex; }
+      nav {
+        display: none;
+        position: absolute; top: 64px; left: 0; right: 0;
+        flex-direction: column;
+        background: rgba(10,10,10,0.97);
+        padding: 24px 32px; gap: 20px;
+        border-bottom: 1px solid #1e1e1e;
+      }
+      nav.open { display: flex; }
+      .page { padding: 96px 24px 48px; }
+      footer { padding: 24px; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <button class="nav-toggle" aria-label="Toggle menu">
+    <span></span><span></span><span></span>
+  </button>
+  <nav id="main-nav">
+    <a href="../index.html">Home</a>
+    <a href="../index.html#works">Works</a>
+    <a href="../index.html#services">Services</a>
+    <a href="../index.html#about">About</a>
+    <a href="../news.html">News</a>
+    <a href="../index.html#contact">Contact</a>
+  </nav>
+</header>
+
+<div class="page">
+  <div class="intro">
+    <p class="section-label">Tool</p>
+    <h1 class="section-title">말풍선 생성기</h1>
+    <p>말풍선을 벡터 셰이프 레이어가 들어간 PSD로 내려받습니다. 포토샵에서 열면 직접 선택 도구로 앵커 포인트를 그대로 편집할 수 있습니다. 글자는 포토샵에서 직접 넣으세요.</p>
+  </div>
+
+  <div class="studio">
+    <!-- ── Controls ── -->
+    <div class="panel">
+      <div class="field">
+        <label>모양</label>
+        <div class="chips" id="shapes"></div>
+      </div>
+
+      <div class="field">
+        <label>꼬리 방향</label>
+        <div class="chips tails" id="tails"></div>
+      </div>
+
+      <div class="field">
+        <div class="colors">
+          <div>
+            <label for="fill">채움색</label>
+            <input type="color" id="fill" value="#ffffff">
+          </div>
+          <div>
+            <label for="stroke">테두리색</label>
+            <input type="color" id="stroke" value="#ef4e23">
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="w">가로 <span class="val" id="wv">560</span> px</label>
+        <input type="range" id="w" min="120" max="1600" step="10" value="560">
+      </div>
+      <div class="field">
+        <label for="h">세로 <span class="val" id="hv">320</span> px</label>
+        <input type="range" id="h" min="80" max="1200" step="10" value="320">
+      </div>
+      <div class="field">
+        <label for="sw">테두리 두께 <span class="val" id="swv">6</span> px</label>
+        <input type="range" id="sw" min="0" max="40" step="1" value="6">
+      </div>
+      <div class="field">
+        <label for="pad">여백 <span class="val" id="padv">40</span> px</label>
+        <input type="range" id="pad" min="0" max="200" step="5" value="40">
+      </div>
+
+      <!-- only for shapes built from a repeating element: puffs, spikes -->
+      <div class="field" id="cloud-opts" hidden>
+        <label for="bumps"><span id="bumps-label">봉우리 개수</span> <span class="val" id="bumpsv">12</span></label>
+        <input type="range" id="bumps" min="6" max="24" step="1" value="12">
+      </div>
+
+      <!-- only for shapes whose elements vary in size -->
+      <div class="field" id="vary-opts" hidden>
+        <label for="vary"><span id="vary-label">크기 편차</span> <span class="val" id="varyv">65</span>%</label>
+        <input type="range" id="vary" min="0" max="100" step="1" value="65">
+      </div>
+    </div>
+
+    <!-- ── Preview ── -->
+    <div class="stage">
+      <!-- the button lives here, next to the thing it changes -->
+      <div class="stage-bar" id="stage-bar" hidden>
+        <button class="btn btn-ghost btn-sm" id="reseed">새 모양</button>
+        <span class="hint">구름 모양을 무작위로 다시 뽑습니다</span>
+      </div>
+      <div class="canvas-wrap"><canvas id="preview"></canvas></div>
+      <p class="meta" id="meta"></p>
+      <div class="actions">
+        <button class="btn btn-primary" id="dl-psd">PSD 다운로드</button>
+        <button class="btn btn-ghost" id="dl-svg">SVG</button>
+        <button class="btn btn-ghost" id="dl-png">PNG</button>
+        <button class="btn btn-ghost" id="copy-png">PNG 복사</button>
+      </div>
+      <p id="status"></p>
+      <p class="note">
+        <strong>PSD</strong>만 벡터 셰이프 레이어로 저장됩니다. 포토샵은 SVG를 파일로 열면 래스터로 변환하고, 브라우저는 클립보드에 벡터를 넣을 수 없습니다. <strong>PNG 복사</strong>는 픽셀로만 붙습니다.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Footer ── -->
+<footer>
+  <a href="../index.html">
+    <img src="../post-images/1ab44f_b4e1291ff6614694b1631f2ab912f957~mv2.png" alt="RetroBot CI">
+  </a>
+  <p>&copy; 2021 RetroBot Inc. All Rights Reserved.</p>
+</footer>
+
+<script src="ag-psd.bundle.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // ══ Geometry ══════════════════════════════════════════
+  // A bubble is a set of closed subpaths of cubic bezier knots in absolute
+  // pixels. One definition drives the canvas preview, the SVG and the PSD
+  // vector mask, so all three agree exactly.
+  //
+  // Knot: { x, y, ix, iy, ox, oy, linked }
+  //   x,y = anchor   ix,iy = incoming control   ox,oy = outgoing control
+
+  var KAPPA = 0.5522847498307936;
+  var TAU = Math.PI * 2;
+
+  function sharp(x, y) { return { x: x, y: y, ix: x, iy: y, ox: x, oy: y, linked: false }; }
+
+  function knotsToSegments(knots) {
+    var segs = [];
+    for (var i = 0; i < knots.length; i++) {
+      var a = knots[i], b = knots[(i + 1) % knots.length];
+      segs.push([a.x, a.y, a.ox, a.oy, b.ix, b.iy, b.x, b.y]);
+    }
+    return segs;
+  }
+
+  function segmentsToKnots(segs) {
+    var knots = [];
+    for (var i = 0; i < segs.length; i++) {
+      var s = segs[i], prev = segs[i - 1];
+      knots.push({
+        x: s[0], y: s[1],
+        ix: prev ? prev[4] : s[0],
+        iy: prev ? prev[5] : s[1],
+        ox: s[2], oy: s[3],
+        linked: false
+      });
+    }
+    return knots;
+  }
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  function splitSegment(s, t) {
+    var ax = lerp(s[0], s[2], t), ay = lerp(s[1], s[3], t);
+    var bx = lerp(s[2], s[4], t), by = lerp(s[3], s[5], t);
+    var cx = lerp(s[4], s[6], t), cy = lerp(s[5], s[7], t);
+    var dx = lerp(ax, bx, t), dy = lerp(ay, by, t);
+    var ex = lerp(bx, cx, t), ey = lerp(by, cy, t);
+    var fx = lerp(dx, ex, t), fy = lerp(dy, ey, t);
+    return [[s[0], s[1], ax, ay, dx, dy, fx, fy], [fx, fy, ex, ey, cx, cy, s[6], s[7]]];
+  }
+
+  function pointAt(s, t) {
+    var u = 1 - t, a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
+    return [a * s[0] + b * s[2] + c * s[4] + d * s[6],
+            a * s[1] + b * s[3] + c * s[5] + d * s[7]];
+  }
+
+  // ══ Tail ══════════════════════════════════════════════
+
+  var TAIL_ANGLE = {
+    'bottom-left':  Math.PI * 0.72,
+    'bottom-right': Math.PI * 0.28,
+    'top-left':     Math.PI * 1.28,
+    'top-right':    Math.PI * 1.72,
+    'left':         Math.PI,
+    'right':        0
+  };
+  var TAIL_LABEL = {
+    'bottom-left': '좌하', 'bottom-right': '우하',
+    'top-left': '좌상', 'top-right': '우상',
+    'left': '좌', 'right': '우'
+  };
+
+  // Where does a ray from the centre at `angle` cross the outline?
+  function rayHit(segs, cx, cy, angle) {
+    var dx = Math.cos(angle), dy = Math.sin(angle), STEPS = 64, best = null;
+    for (var i = 0; i < segs.length; i++) {
+      var prev = pointAt(segs[i], 0);
+      for (var j = 1; j <= STEPS; j++) {
+        var cur = pointAt(segs[i], j / STEPS);
+        var ex = cur[0] - prev[0], ey = cur[1] - prev[1];
+        // Cramer's rule on [[dx, -ex], [dy, -ey]] * [k, u] = prev - centre
+        var den = ex * dy - ey * dx;
+        if (Math.abs(den) > 1e-9) {
+          var px = prev[0] - cx, py = prev[1] - cy;
+          var u = (dx * py - dy * px) / den;
+          var k = (ex * py - ey * px) / den;
+          if (u >= 0 && u <= 1 && k > 0 && (!best || k > best.k)) {
+            best = { seg: i, t: (j - 1 + u) / STEPS, k: k };
+          }
+        }
+        prev = cur;
+      }
+    }
+    return best;
+  }
+
+  // The outline walked forward from `from` all the way round to `to`.
+  function walk(segs, from, to) {
+    var out = [], i = from.seg, head = splitSegment(segs[i], from.t)[1];
+    for (var n = 0; n < segs.length + 2; n++) {
+      if (i === to.seg && (n > 0 || to.t > from.t)) {
+        var tt = n === 0 ? (to.t - from.t) / (1 - from.t) : to.t;
+        out.push(splitSegment(head, Math.max(0, Math.min(1, tt)))[0]);
+        return out;
+      }
+      out.push(head);
+      i = (i + 1) % segs.length;
+      head = segs[i];
+    }
+    return out;
+  }
+
+  // Replace the slice of outline spanned by the tail with a spike.
+  function spliceTail(knots, cx, cy, dir, opts, scale) {
+    opts = opts || {};
+    var width = opts.width || 0.22, length = opts.length || 0.45;
+    var angle = TAIL_ANGLE[dir];
+
+    // On a cloud the tail grows out of a dip between two puffs, never out of
+    // the middle of one. The valleys are exactly the knots, so nudge the tail
+    // round to whichever one lies closest to the requested direction.
+    if (opts.snapToValley) {
+      // On a cloud every knot is a valley; on a burst they alternate spike,
+      // valley, spike, so only every other one is a candidate.
+      var step = opts.valleyEvery || 1;
+      var best = null;
+      for (var vi = opts.valleyOffset || 0; vi < knots.length; vi += step) {
+        var va = Math.atan2(knots[vi].y - cy, knots[vi].x - cx);
+        var diff = Math.abs(((va - angle + Math.PI) % TAU + TAU) % TAU - Math.PI);
+        if (!best || diff < best.diff) {
+          best = { diff: diff, angle: va,
+                   r: Math.hypot(knots[vi].x - cx, knots[vi].y - cy) };
+        }
+      }
+      if (best) {
+        angle = best.angle;
+        // The tail belongs to the bubble, not to a puff, so fix its base width
+        // against the bubble and convert to an angle at the point it attaches.
+        // Adding puffs then leaves the tail exactly as it was.
+        var basePx = (opts.widthFactor || 0.30) * (scale || best.r);
+        width = 2 * Math.atan((basePx / 2) / Math.max(1, best.r));
+      }
+    }
+
+    var segs = knotsToSegments(knots);
+
+    var h1 = rayHit(segs, cx, cy, angle - width / 2);
+    var h2 = rayHit(segs, cx, cy, angle + width / 2);
+    if (!h1 || !h2) return knots;
+
+    // Keep the long way round: from the far edge of the tail back to the near one.
+    var kept = walk(segs, h2, h1);
+    if (!kept.length) return knots;
+
+    var reach = Math.max(h1.k, h2.k) * (1 + length);
+    var out = segmentsToKnots(kept);
+    var last = kept[kept.length - 1];
+    var base1 = { x: last[6], y: last[7] };
+    var base2 = out[0];
+    var tip = { x: cx + Math.cos(angle) * reach, y: cy + Math.sin(angle) * reach };
+
+    // Handles a third of the way along each tail edge. A cubic whose controls
+    // sit evenly on its chord is exactly the straight line, so the tail looks
+    // unchanged - but Photoshop shows draggable handles, so it can be curved.
+    function along(a, b, f) { return [a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f]; }
+    var p1 = along(base1, tip, 1 / 3), p2 = along(base1, tip, 2 / 3);
+    var p3 = along(tip, base2, 1 / 3), p4 = along(tip, base2, 2 / 3);
+
+    out.push({ x: base1.x, y: base1.y, ix: last[4], iy: last[5], ox: p1[0], oy: p1[1], linked: false });
+    out.push({ x: tip.x, y: tip.y, ix: p2[0], iy: p2[1], ox: p3[0], oy: p3[1], linked: false });
+    base2.ix = p4[0];
+    base2.iy = p4[1];
+    return out;
+  }
+
+  // A burst is already all spikes, so cutting a slice out of the outline to
+  // graft a triangle on never sits right. Comics just draw one spike running
+  // long. Its base is then a spike base like any other, so the tail can never
+  // be out of proportion with the shape.
+  function stretchSpike(knots, cx, cy, dir, length) {
+    var angle = TAIL_ANGLE[dir];
+    var best = null, i;
+    for (i = 1; i < knots.length; i += 2) {            // spikes are the odd knots
+      var a = Math.atan2(knots[i].y - cy, knots[i].x - cx);
+      var d = Math.abs(((a - angle + Math.PI) % TAU + TAU) % TAU - Math.PI);
+      if (!best || d < best.d) best = { d: d, i: i };
+    }
+    if (!best) return knots;
+
+    var out = knots.map(function (k) {
+      return { x: k.x, y: k.y, ix: k.ix, iy: k.iy, ox: k.ox, oy: k.oy, linked: k.linked };
+    });
+    var n = out.length;
+    var tip = out[best.i];
+    var prev = out[(best.i - 1 + n) % n];
+    var next = out[(best.i + 1) % n];
+
+    // aim it at the requested direction so all six read distinctly
+    var reach = Math.hypot(tip.x - cx, tip.y - cy) * (1 + length);
+    tip.x = cx + Math.cos(angle) * reach;
+    tip.y = cy + Math.sin(angle) * reach;
+
+    // handles along both tail edges - collinear, so the shape is unchanged, but
+    // Photoshop shows something to grab if the tail wants a curve
+    var along = function (a, b, f) {
+      return [a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f];
+    };
+    var p1 = along(prev, tip, 1 / 3), p2 = along(prev, tip, 2 / 3);
+    var p3 = along(tip, next, 1 / 3), p4 = along(tip, next, 2 / 3);
+    prev.ox = p1[0]; prev.oy = p1[1];
+    tip.ix = p2[0]; tip.iy = p2[1];
+    tip.ox = p3[0]; tip.oy = p3[1];
+    next.ix = p4[0]; next.iy = p4[1];
+    return out;
+  }
+
+  // ══ Shape outlines (clockwise, y down) ════════════════
+
+  function ellipseKnots(cx, cy, rx, ry) {
+    var kx = KAPPA * rx, ky = KAPPA * ry;
+    return [
+      { x: cx + rx, y: cy,      ix: cx + rx, iy: cy - ky, ox: cx + rx, oy: cy + ky, linked: true },
+      { x: cx,      y: cy + ry, ix: cx + kx, iy: cy + ry, ox: cx - kx, oy: cy + ry, linked: true },
+      { x: cx - rx, y: cy,      ix: cx - rx, iy: cy + ky, ox: cx - rx, oy: cy - ky, linked: true },
+      { x: cx,      y: cy - ry, ix: cx - kx, iy: cy - ry, ox: cx + kx, oy: cy - ry, linked: true }
+    ];
+  }
+
+  function rectKnots(x0, y0, x1, y1) {
+    return [sharp(x0, y0), sharp(x1, y0), sharp(x1, y1), sharp(x0, y1)];
+  }
+
+  function roundedRectKnots(x0, y0, x1, y1, r) {
+    r = Math.min(r, (x1 - x0) / 2, (y1 - y0) / 2);
+    var k = KAPPA * r;
+    return [
+      { x: x0 + r, y: y0, ix: x0 + r - k, iy: y0, ox: x0 + r, oy: y0, linked: false },
+      { x: x1 - r, y: y0, ix: x1 - r, iy: y0, ox: x1 - r + k, oy: y0, linked: false },
+      { x: x1, y: y0 + r, ix: x1, iy: y0 + r - k, ox: x1, oy: y0 + r, linked: false },
+      { x: x1, y: y1 - r, ix: x1, iy: y1 - r, ox: x1, oy: y1 - r + k, linked: false },
+      { x: x1 - r, y: y1, ix: x1 - r + k, iy: y1, ox: x1 - r, oy: y1, linked: false },
+      { x: x0 + r, y: y1, ix: x0 + r, iy: y1, ox: x0 + r - k, oy: y1, linked: false },
+      { x: x0, y: y1 - r, ix: x0, iy: y1 - r + k, ox: x0, oy: y1 - r, linked: false },
+      { x: x0, y: y0 + r, ix: x0, iy: y0 + r, ox: x0, oy: y0 + r - k, linked: false }
+    ];
+  }
+
+  function angularKnots(x0, y0, x1, y1, c) {
+    c = Math.min(c, (x1 - x0) / 3, (y1 - y0) / 3);
+    return [
+      sharp(x0 + c, y0), sharp(x1 - c, y0),
+      sharp(x1, y0 + c), sharp(x1, y1 - c),
+      sharp(x1 - c, y1), sharp(x0 + c, y1),
+      sharp(x0, y1 - c), sharp(x0, y0 + c)
+    ];
+  }
+
+  // ── Cloud ─────────────────────────────────────────────
+  // Puffs around an ellipse. Everything irregular about it is driven by a
+  // seeded PRNG, so a seed always redraws the identical cloud (preview, PSD,
+  // SVG and PNG can never disagree) while a new seed gives a brand new one.
+
+  function rng(seed) {
+    var a = (seed >>> 0) || 1;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  var CLOUD = { puff: 0.62, sizeVar: 1.15, radial: 0.14 };
+
+  function cloudKnots(cx, cy, rx, ry, bumps, seed, damp) {
+    var rand = rng(seed), i;
+    var sizeVar = CLOUD.sizeVar * damp;
+    var radial = CLOUD.radial * damp;
+    var puff = CLOUD.puff * (0.55 + 0.45 * damp);
+
+    // arc-length table around the ellipse
+    var N = 1200, table = [{ t: 0, s: 0 }], total = 0, prev = [rx, 0];
+    for (i = 1; i <= N; i++) {
+      var t = (i / N) * TAU;
+      var p = [rx * Math.cos(t), ry * Math.sin(t)];
+      total += Math.hypot(p[0] - prev[0], p[1] - prev[1]);
+      table.push({ t: t, s: total });
+      prev = p;
+    }
+
+    // Each puff gets a share of the perimeter. Handing out shares - rather than
+    // nudging every anchor on its own - stops neighbours colliding, so no puff
+    // is ever squeezed down to a sliver.
+    var shares = [], sum = 0;
+    for (i = 0; i < bumps; i++) {
+      var sh = 1 + sizeVar * (rand() * 2 - 1) * 0.55;
+      shares.push(sh);
+      sum += sh;
+    }
+
+    var ts = [], acc = 0, k = 0;
+    for (i = 0; i < bumps; i++) {
+      var want = (acc / sum) * total;
+      while (k < table.length - 1 && table[k + 1].s < want) k++;
+      while (k > 0 && table[k].s > want) k--;
+      ts.push(table[k].t);
+      acc += shares[i];
+    }
+
+    var at = function (t) {
+      return [cx + rx * Math.cos(t - Math.PI / 2), cy + ry * Math.sin(t - Math.PI / 2)];
+    };
+    var wrap = function (t) { return ((t % TAU) + TAU) % TAU; };
+
+    // Equal arc is not equal chord: where the ellipse curves hard (the ends of
+    // a long bubble) the same arc spans a much shorter chord, so those puffs
+    // come out small and flat and the whole thing reads as a stretched circle.
+    // Relax the anchors until the chords are even instead.
+    for (var iter = 0; iter < 90; iter++) {
+      var P = ts.map(at), D = [];
+      for (i = 0; i < bumps; i++) {
+        var n1 = (i + 1) % bumps;
+        D.push(Math.hypot(P[n1][0] - P[i][0], P[n1][1] - P[i][1]) / shares[i]);
+      }
+      for (i = 0; i < bumps; i++) {
+        var pv = D[(i - 1 + bumps) % bumps], nx2 = D[i];
+        var gap = wrap(ts[(i + 1) % bumps] - ts[(i - 1 + bumps) % bumps]);
+        if (gap > Math.PI * 1.5) gap = TAU - gap;
+        ts[i] = wrap(ts[i] - 0.25 * ((pv - nx2) / (pv + nx2)) * gap);
+      }
+    }
+
+    // Lift each anchor off the ellipse. Without this every valley sits exactly
+    // on the ellipse and that perfectly regular spine shows through no matter
+    // how much the puffs themselves vary. The offset is budgeted against the
+    // SHORT radius - a percentage of each anchor's own radius reaches clear
+    // across the waist of a thin bubble and knots the outline.
+    var anchors = ts.map(function (t) {
+      var p = at(t);
+      if (!radial) return p;
+      var dx = p[0] - cx, dy = p[1] - cy, L = Math.hypot(dx, dy) || 1;
+      var d = radial * Math.min(rx, ry) * (rand() * 2 - 1);
+      return [p[0] + (dx / L) * d, p[1] + (dy / L) * d];
+    });
+
+    // outward normal and reach of each span
+    var spans = anchors.map(function (a, j) {
+      var b = anchors[(j + 1) % bumps];
+      var ex = b[0] - a[0], ey = b[1] - a[1], L = Math.hypot(ex, ey) || 1;
+      var nx = ey / L, ny = -ex / L;
+      var mx = (a[0] + b[0]) / 2 - cx, my = (a[1] + b[1]) / 2 - cy;
+      if (nx * mx + ny * my < 0) { nx = -nx; ny = -ny; }
+      // Every puff bulges by the same fraction of its own chord, so a wide one
+      // and a narrow one are the same curve at different sizes. Rolling the
+      // bulge separately from the width is what scatters flat puffs through
+      // the outline.
+      return { nx: nx, ny: ny, L: L, f: puff };
+    });
+
+    // Both handles at a valley point outward. Where the two spans meeting there
+    // face in very different directions, full-length handles overshoot the
+    // anchor and the curve doubles back on itself - a loop a couple of pixels
+    // across, invisible on screen but a real knot in the exported vector. Pull
+    // the handles in by how far apart those directions are.
+    // One grip for the whole outline, taken from the worst corner. Letting it
+    // differ per anchor protects each corner by exactly as much as it needs,
+    // but it also reshapes each puff by a different amount - and uneven puff
+    // shapes are far more visible than handles that are a little short.
+    var grip = 1;
+    for (var gi = 0; gi < bumps; gi++) {
+      var gp = spans[(gi - 1 + bumps) % bumps], gq = spans[gi];
+      var gc = gp.nx * gq.nx + gp.ny * gq.ny;
+      grip = Math.min(grip, Math.max(0.42, Math.min(1, 0.55 + 0.45 * gc)));
+    }
+
+    var ctrl = anchors.map(function (a, j) {
+      var b = anchors[(j + 1) % bumps], s = spans[j];
+      var r1 = s.f * s.L * grip;
+      var r2 = s.f * s.L * grip;
+      return { c1: [a[0] + s.nx * r1, a[1] + s.ny * r1],
+               c2: [b[0] + s.nx * r2, b[1] + s.ny * r2] };
+    });
+
+    return anchors.map(function (a, j) {
+      var pc = ctrl[(j - 1 + bumps) % bumps];
+      return { x: a[0], y: a[1], ix: pc.c2[0], iy: pc.c2[1],
+               ox: ctrl[j].c1[0], oy: ctrl[j].c1[1], linked: false };
+    });
+  }
+
+  function crosses(p, q, r, s) {
+    var d = (q[0] - p[0]) * (s[1] - r[1]) - (q[1] - p[1]) * (s[0] - r[0]);
+    if (Math.abs(d) < 1e-12) return false;
+    var t = ((r[0] - p[0]) * (s[1] - r[1]) - (r[1] - p[1]) * (s[0] - r[0])) / d;
+    var u = ((r[0] - p[0]) * (q[1] - p[1]) - (r[1] - p[1]) * (q[0] - p[0])) / d;
+    return t > 1e-6 && t < 1 - 1e-6 && u > 1e-6 && u < 1 - 1e-6;
+  }
+
+  // Catches gross knots - the kind that pinch a flat bubble in half. The sub-pixel
+  // loops where two puffs meet are left alone: they are invisible, and every
+  // renderer here fills non-zero, so overlap just merges.
+  function selfIntersects(knots) {
+    var pts = [], i, j;
+    for (i = 0; i < knots.length; i++) {
+      var a = knots[i], b = knots[(i + 1) % knots.length];
+      var s = [a.x, a.y, a.ox, a.oy, b.ix, b.iy, b.x, b.y];
+      for (j = 0; j < 16; j++) pts.push(pointAt(s, j / 16));
+    }
+    var n = pts.length;
+    for (i = 0; i < n; i++) {
+      for (j = i + 2; j < n; j++) {
+        if (i === 0 && j === n - 1) continue;
+        if (crosses(pts[i], pts[(i + 1) % n], pts[j], pts[(j + 1) % n])) return true;
+      }
+    }
+    return false;
+  }
+
+  // The roughness is damped and retried when the outline knots itself; see
+  // buildBubble, which runs the check on the finished path including the tail.
+
+  // Parametric angles spaced so the straight chords between them come out even.
+  // Equal angle is not equal distance on an ellipse: at the ends of a wide one
+  // the same angle spans a much shorter chord, which is why evenly-angled
+  // points give spikes with wildly different bases.
+  // `phase` must match however the caller turns these angles into points: on an
+  // ellipse, shifting the parameter by 90 degrees swaps which axis it sweeps,
+  // so angles evened out in one convention are not even in the other.
+  // `shares` optionally asks for chords in given proportions instead of equal
+  // ones - handing out shares keeps neighbours from colliding, so no chord ever
+  // collapses to nothing however uneven the request.
+  function evenChordAngles(rx, ry, n, phase, shares) {
+    phase = phase || 0;
+    var w = shares || [], sum = 0, j;
+    for (j = 0; j < n; j++) { if (!shares) w[j] = 1; sum += w[j]; }
+    var pt = function (t) {
+      return [rx * Math.cos(t + phase), ry * Math.sin(t + phase)];
+    };
+    var N = 900, table = [{ t: 0, s: 0 }], total = 0, prev = pt(0), i;
+    for (i = 1; i <= N; i++) {
+      var t = (i / N) * TAU, p = pt(t);
+      total += Math.hypot(p[0] - prev[0], p[1] - prev[1]);
+      table.push({ t: t, s: total });
+      prev = p;
+    }
+    var ts = [], k = 0, acc = 0;
+    for (i = 0; i < n; i++) {
+      var want = (acc / sum) * total;
+      while (k < table.length - 1 && table[k + 1].s < want) k++;
+      while (k > 0 && table[k].s > want) k--;
+      ts.push(table[k].t);
+      acc += w[i];
+    }
+    var at = pt;
+    var wrap = function (t) { return ((t % TAU) + TAU) % TAU; };
+    // A long thin ellipse is parameterised very unevenly, so this needs a good
+    // many passes to settle; stopping early leaves chords that do not match the
+    // shares they were asked for.
+    for (var iter = 0; iter < 400; iter++) {
+      var P = ts.map(at), D = [];
+      for (i = 0; i < n; i++) {
+        var m = (i + 1) % n;
+        D.push(Math.hypot(P[m][0] - P[i][0], P[m][1] - P[i][1]) / w[i]);
+      }
+      for (i = 0; i < n; i++) {
+        var pv = D[(i - 1 + n) % n], nx = D[i];
+        var gap = wrap(ts[(i + 1) % n] - ts[(i - 1 + n) % n]);
+        if (gap > Math.PI * 1.5) gap = TAU - gap;
+        ts[i] = wrap(ts[i] - 0.25 * ((pv - nx) / (pv + nx)) * gap);
+      }
+    }
+    // The relaxation can overshoot on a very elongated ellipse and let two
+    // anchors swap places. Points out of order around the rim make the outline
+    // cross itself, so put them back in order - a slightly-off chord is a far
+    // better outcome than a knotted shape.
+    ts.sort(function (a, b) { return a - b; });
+    return ts;
+  }
+
+  // Vertices sit on an ellipse, spaced so the sides come out in the requested
+  // proportions. Points taken in order round a convex curve can never make a
+  // self-crossing outline, so this needs no guard.
+  function polygonKnots(cx, cy, rx, ry, sides, vary, seed) {
+    var shares = null;
+    if (vary) {
+      var rand = rng(seed);
+      shares = [];
+      for (var i = 0; i < sides; i++) {
+        shares.push(Math.max(0.3, 1 + vary * (rand() * 2 - 1)));
+      }
+    }
+    var ts = evenChordAngles(rx, ry, sides, -Math.PI / 2, shares);
+    return ts.map(function (t) {
+      var u = t - Math.PI / 2;
+      return sharp(cx + rx * Math.cos(u), cy + ry * Math.sin(u));
+    });
+  }
+
+  function burstKnots(cx, cy, rx, ry, spikes, inner, vary, seed) {
+    var rand = vary ? rng(seed) : null;
+    // The valleys sit on an ellipse, evenly spaced by distance rather than by
+    // angle, and every spike stands the same height above it. Scaling the
+    // spikes with the local radius instead - which is what multiplying both
+    // axes does - makes the ones at the ends of a wide bubble more than twice
+    // as long as the rest, and the shape reads as stretched sideways.
+    var coreRx = rx * inner, coreRy = ry * inner;
+    var spike = Math.min(rx, ry) * (1 - inner);
+    // One scale per spike, driving its base and its height together, so every
+    // spike is the same triangle at a different size. Rolling the two
+    // separately instead gives a mix of squat and needle-thin ones.
+    var shares = null;
+    if (rand) {
+      shares = [];
+      // floor the scale: below about a third the chord the relaxation is asked
+      // for is too small to converge on, and those spikes come out the wrong
+      // proportion rather than merely small
+      for (var si = 0; si < spikes; si++) {
+        shares.push(Math.max(0.32, 1 + vary * (rand() * 2 - 1)));
+      }
+    }
+    var ts = evenChordAngles(coreRx, coreRy, spikes, -Math.PI / 2, shares);
+
+    var at = function (t) {
+      var u = t - Math.PI / 2;
+      return [cx + coreRx * Math.cos(u), cy + coreRy * Math.sin(u)];
+    };
+    // Height is set from the base each spike actually ended up with, not from
+    // the scale it was asked for. The two only agree if the even-ing out landed
+    // perfectly, and on extreme ellipses it does not - so tie them together
+    // here and every spike is the same triangle by construction.
+    var pts = ts.map(at), chord = [], mean = 0;
+    for (var ci = 0; ci < spikes; ci++) {
+      var q = pts[(ci + 1) % spikes];
+      chord.push(Math.hypot(q[0] - pts[ci][0], q[1] - pts[ci][1]));
+      mean += chord[ci];
+    }
+    mean /= spikes;
+
+    var out = [];
+    for (var i = 0; i < spikes; i++) {
+      var a = pts[i], b = pts[(i + 1) % spikes];
+      out.push(sharp(a[0], a[1]));                       // valley
+
+      // Raise the spike off the line joining its two valleys, not off the
+      // ellipse. That line is what the eye reads the spike against, and the
+      // ellipse bulges above it by a different amount at every curvature, so
+      // measuring from the surface leaves the spikes looking uneven. With the
+      // valleys evenly spaced too, every spike is now the same triangle.
+      var ex = b[0] - a[0], ey = b[1] - a[1];
+      var L = Math.hypot(ex, ey) || 1;
+      var nx = ey / L, ny = -ex / L;
+      var mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+      if (nx * (mx - cx) + ny * (my - cy) < 0) { nx = -nx; ny = -ny; }
+      var hgt = shares ? spike * (chord[i] / mean) : spike;
+      out.push(sharp(mx + nx * hgt, my + ny * hgt));
+    }
+    return out;
+  }
+
+  function count(key) { return state.counts[key]; }
+
+  // slider is 0-100%; 100% lets a spike run from almost nothing to nearly double
+  function varyOf(key) { return (state.varies[key] / 100) * 0.9; }
+
+  var SHAPES = {
+    ellipse:     { label: '타원',        build: function (b) { return ellipseKnots(b.cx, b.cy, b.rx, b.ry); } },
+    rect:        { label: '사각형',      build: function (b) { return rectKnots(b.x0, b.y0, b.x1, b.y1); } },
+    roundedRect: { label: '둥근사각형',  build: function (b) { return roundedRectKnots(b.x0, b.y0, b.x1, b.y1, Math.min(b.w, b.h) * 0.18); } },
+    pill:        { label: '알약형',      build: function (b) { return roundedRectKnots(b.x0, b.y0, b.x1, b.y1, b.h / 2); } },
+    angular:     { label: '각진 상자',   build: function (b) { return angularKnots(b.x0, b.y0, b.x1, b.y1, Math.min(b.w, b.h) * 0.22); } },
+    polygon:     { label: '다각형',      seeded: true, count: { min: 5, max: 16, def: 7, label: '변 개수' }, vary: { def: 45, label: '변 길이 편차' }, build: function (b) { return polygonKnots(b.cx, b.cy, b.rx, b.ry, count('polygon'), varyOf('polygon'), state.seed); } },
+    thought:     { label: '생각',        seeded: true, damped: true, count: { min: 6, max: 24, def: 12, label: '봉우리 개수' }, build: function (b, d) { return cloudKnots(b.cx, b.cy, b.rx * 0.84, b.ry * 0.80, count('thought'), state.seed, d); } },
+    // Burst outlines already bristle with spikes, so their tail reaches
+    // further out to read as a tail rather than as another spike.
+    // burstKnots emits valley, spike, valley, spike... so the valleys are even.
+    spiky:       { label: '뾰족(외침)',  count: { min: 14, max: 20, def: 16, label: '뾰족 개수' }, stretchTail: { length: 0.55 }, build: function (b) { return burstKnots(b.cx, b.cy, b.rx, b.ry, count('spiky'), 0.74); } },
+    comic:       { label: '만화 외침',   seeded: true, damped: true, count: { min: 14, max: 28, def: 18, label: '뾰족 개수' }, vary: { def: 65, label: '뾰족 크기 편차' }, stretchTail: { length: 0.75 }, build: function (b, d) { return burstKnots(b.cx, b.cy, b.rx, b.ry, count('comic'), 0.62, varyOf('comic') * (d == null ? 1 : d), state.seed); } },
+    whisper:     { label: '속삭임',      build: function (b) { return ellipseKnots(b.cx, b.cy, b.rx, b.ry); }, dashed: true }
+  };
+
+  // Thought bubbles trail shrinking puffs instead of a spike.
+  function thoughtTail(cx, cy, rx, ry, dir, body) {
+    var angle = TAIL_ANGLE[dir];
+    var ca = Math.cos(angle), sa = Math.sin(angle);
+    var unit = Math.min(rx, ry);
+
+    // Where the body's outline actually is. The base ellipse is not it - the
+    // puffs bulge well past it by an amount that varies with the seed, so
+    // measuring against the ellipse buries the circles wherever a puff sticks
+    // out. Sweep the whole angular slice the circle occupies, not just the
+    // centre line, or its flank still catches the puff next door.
+    var fallback = 1 / Math.sqrt((ca / rx) * (ca / rx) + (sa / ry) * (sa / ry));
+    var edge = fallback;
+    if (body) {
+      var segs = knotsToSegments(body);
+      var axis = rayHit(segs, cx, cy, angle);
+      var base = axis ? axis.k : fallback;
+      var half = Math.atan((unit * 0.105 * 1.16) / Math.max(1, base));
+      edge = base;
+      for (var s = -3; s <= 3; s++) {
+        var h = rayHit(segs, cx, cy, angle + (half * s) / 3);
+        if (h && h.k > edge) edge = h.k;
+      }
+    }
+
+    var puffs = [], d = edge + unit * 0.05;
+    for (var i = 0; i < 3; i++) {
+      var r = unit * (0.105 - i * 0.026);
+      // slightly wider than tall - a perfect circle reads as a bullet point
+      var er = r * 1.16, eh = r * 0.88;
+      // the ellipse's own reach along the tail direction, so it clears the edge
+      var reach = 1 / Math.sqrt((ca / er) * (ca / er) + (sa / eh) * (sa / eh));
+      d += reach;
+      puffs.push(ellipseKnots(cx + ca * d, cy + sa * d, er, eh));
+      d += reach + r * 0.55;
+    }
+    return puffs;
+  }
+
+  function buildBubble(key, box, tailDir) {
+    var b = {
+      x0: box.x, y0: box.y, x1: box.x + box.w, y1: box.y + box.h,
+      w: box.w, h: box.h,
+      cx: box.x + box.w / 2, cy: box.y + box.h / 2,
+      rx: box.w / 2, ry: box.h / 2
+    };
+    var shape = SHAPES[key];
+
+    function assemble(body) {
+      if (!tailDir) return { subpaths: [body], dashed: !!shape.dashed };
+      if (shape.stretchTail) {
+        return {
+          subpaths: [stretchSpike(body, b.cx, b.cy, tailDir, shape.stretchTail.length)],
+          dashed: !!shape.dashed
+        };
+      }
+      if (key === 'thought') {
+        return {
+          subpaths: [body].concat(thoughtTail(b.cx, b.cy, b.rx * 0.84, b.ry * 0.80, tailDir, body)),
+          dashed: false
+        };
+      }
+      return {
+        subpaths: [spliceTail(body, b.cx, b.cy, tailDir, shape.tail, Math.min(b.rx, b.ry))],
+        dashed: !!shape.dashed
+      };
+    }
+
+    // `seeded` only means there is a seed to reroll; `damped` is the cloud's
+    // build-check-retry, which a burst has no need of.
+    if (!shape.damped) return assemble(shape.build(b));
+
+    // A very flat bubble - or one with many puffs - has no room for deep puffs:
+    // opposite sides meet in the middle and knot the outline, which punches
+    // holes under the even-odd fill rule. Splicing the tail can knot it too, so
+    // the check has to run on the finished path, not just the body. Build it,
+    // check it, and back the roughness off only when it actually fails.
+    var out;
+    for (var attempt = 0; attempt < 6; attempt++) {
+      out = assemble(shape.build(b, Math.pow(0.7, attempt)));
+      var knotted = false;
+      for (var i = 0; i < out.subpaths.length; i++) {
+        if (selfIntersects(out.subpaths[i])) { knotted = true; break; }
+      }
+      if (!knotted) return out;
+    }
+    return assemble(shape.build(b, 0));   // last resort: no roughness at all
+  }
+
+  // ══ Derivations ═══════════════════════════════════════
+
+  function eachSegment(knots, fn) {
+    for (var i = 0; i < knots.length; i++) fn(knots[i], knots[(i + 1) % knots.length]);
+  }
+
+  function pathToCanvas(ctx, knots) {
+    ctx.beginPath();
+    ctx.moveTo(knots[0].x, knots[0].y);
+    eachSegment(knots, function (a, b) { ctx.bezierCurveTo(a.ox, a.oy, b.ix, b.iy, b.x, b.y); });
+    ctx.closePath();
+  }
+
+  function pathToSVG(knots) {
+    var d = 'M ' + r2(knots[0].x) + ' ' + r2(knots[0].y);
+    eachSegment(knots, function (a, b) {
+      d += ' C ' + r2(a.ox) + ' ' + r2(a.oy) + ' ' + r2(b.ix) + ' ' + r2(b.iy) + ' ' + r2(b.x) + ' ' + r2(b.y);
+    });
+    return d + ' Z';
+  }
+
+  // PSD knot points are [inX, inY, anchorX, anchorY, outX, outY] in absolute px.
+  function pathToPSD(knots) {
+    return knots.map(function (k) {
+      return { linked: k.linked, points: [k.ix, k.iy, k.x, k.y, k.ox, k.oy] };
+    });
+  }
+
+  function r2(n) { return Math.round(n * 100) / 100; }
+
+  function bbox(subpaths) {
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    subpaths.forEach(function (knots) {
+      knotsToSegments(knots).forEach(function (s) {
+        for (var i = 0; i <= 24; i++) {
+          var p = pointAt(s, i / 24);
+          if (p[0] < minX) minX = p[0];
+          if (p[1] < minY) minY = p[1];
+          if (p[0] > maxX) maxX = p[0];
+          if (p[1] > maxY) maxY = p[1];
+        }
+      });
+    });
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+  }
+
+  function translate(subpaths, dx, dy) {
+    return subpaths.map(function (knots) {
+      return knots.map(function (k) {
+        return { x: k.x + dx, y: k.y + dy, ix: k.ix + dx, iy: k.iy + dy,
+                 ox: k.ox + dx, oy: k.oy + dy, linked: k.linked };
+      });
+    });
+  }
+
+  // ══ Painting ══════════════════════════════════════════
+
+  function paint(ctx, subpaths, o) {
+    subpaths.forEach(function (knots) {
+      pathToCanvas(ctx, knots);
+      ctx.fillStyle = o.fill;
+      ctx.fill();
+      if (o.strokeWidth > 0) {
+        ctx.save();
+        if (o.dashed) ctx.setLineDash([o.strokeWidth * 3, o.strokeWidth * 2.2]);
+        ctx.lineWidth = o.strokeWidth;
+        ctx.strokeStyle = o.stroke;
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+        ctx.restore();
+      }
+    });
+  }
+
+  // ══ State ═════════════════════════════════════════════
+
+  var state = { shape: 'ellipse', tail: 'bottom-left', fill: '#ffffff',
+                stroke: '#ef4e23', w: 560, h: 320, sw: 6, pad: 40,
+                counts: {}, varies: {}, seed: (Math.random() * 0x7fffffff) | 0 };
+
+  // each shape remembers its own settings, so switching back and forth keeps them
+  Object.keys(SHAPES).forEach(function (k) {
+    if (SHAPES[k].count) state.counts[k] = SHAPES[k].count.def;
+    if (SHAPES[k].vary) state.varies[k] = SHAPES[k].vary.def;
+  });
+  var current = null;   // { subpaths, dashed, width, height }
+
+  function compose() {
+    var built = buildBubble(state.shape, { x: 0, y: 0, w: state.w, h: state.h }, state.tail);
+    var box = bbox(built.subpaths);
+    var m = state.pad + state.sw / 2 + 1;    // stroke straddles the path
+    return {
+      subpaths: translate(built.subpaths, m - box.x, m - box.y),
+      dashed: built.dashed,
+      width: Math.ceil(box.w + m * 2),
+      height: Math.ceil(box.h + m * 2)
+    };
+  }
+
+  var canvas = document.getElementById('preview');
+  var meta = document.getElementById('meta');
+  var status = document.getElementById('status');
+
+  function render() {
+    var shape = SHAPES[state.shape], cfg = shape.count;
+    document.getElementById('cloud-opts').hidden = !cfg;
+    if (cfg) {
+      var input = document.getElementById('bumps');
+      input.min = cfg.min;
+      input.max = cfg.max;
+      input.value = state.counts[state.shape];
+      document.getElementById('bumpsv').textContent = input.value;
+      document.getElementById('bumps-label').textContent = cfg.label;
+    }
+    var vcfg = shape.vary;
+    document.getElementById('vary-opts').hidden = !vcfg;
+    if (vcfg) {
+      var vin = document.getElementById('vary');
+      vin.value = state.varies[state.shape];
+      document.getElementById('varyv').textContent = vin.value;
+      document.getElementById('vary-label').textContent = vcfg.label;
+    }
+    // reseeding only means anything where the shape is randomised
+    document.getElementById('stage-bar').hidden = !shape.seeded;
+    current = compose();
+    canvas.width = current.width;
+    canvas.height = current.height;
+    var ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, current.width, current.height);
+    paint(ctx, current.subpaths, {
+      fill: state.fill, stroke: state.stroke,
+      strokeWidth: state.sw, dashed: current.dashed
+    });
+    var anchors = current.subpaths.reduce(function (n, k) { return n + k.length; }, 0);
+    meta.textContent = current.width + ' × ' + current.height + ' px · ' +
+                       anchors + ' anchor points · ' + current.subpaths.length + ' path' +
+                       (current.subpaths.length > 1 ? 's' : '');
+    say('');
+  }
+
+  function say(msg) { status.textContent = msg; }
+
+  // ══ Export ════════════════════════════════════════════
+
+  function filename(ext) {
+    return 'bubble-' + state.shape + (state.tail ? '-' + state.tail : '') + '.' + ext;
+  }
+
+  function save(blob, name) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  function hexToRgb(hex) {
+    var h = hex.replace('#', '');
+    return { r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16) };
+  }
+
+  document.getElementById('dl-psd').addEventListener('click', function () {
+    try {
+      // ag-psd does not rasterize vector layers - supply the bitmap ourselves.
+      var layer = document.createElement('canvas');
+      layer.width = current.width;
+      layer.height = current.height;
+      var lctx = layer.getContext('2d');
+      paint(lctx, current.subpaths, {
+        fill: state.fill, stroke: state.stroke,
+        strokeWidth: state.sw, dashed: current.dashed
+      });
+      var img = lctx.getImageData(0, 0, current.width, current.height);
+
+      var layer = {
+        name: 'Speech Bubble',
+        top: 0, left: 0, bottom: current.height, right: current.width,
+        imageData: img,
+        vectorFill: { type: 'color', color: hexToRgb(state.fill) },
+        vectorMask: {
+          paths: current.subpaths.map(function (knots) {
+            // non-zero to match what canvas and SVG already do by default. The
+            // cloud outline can overlap itself very slightly where two puffs
+            // meet; under even-odd those overlaps would punch tiny notches that
+            // appear in Photoshop but not in the preview.
+            return { open: false, fillRule: 'non-zero', operation: 'combine', knots: pathToPSD(knots) };
+          })
+        }
+      };
+
+      // Photoshop re-renders a shape layer from its vector data and discards the
+      // stored bitmap, so the outline has to be a real vector stroke - painting
+      // it into the pixels above is not enough. Adding vectorStroke also moves
+      // the fill from the SoCo key to vscg, which is what Photoshop expects.
+      if (state.sw > 0) {
+        layer.vectorStroke = {
+          strokeEnabled: true,
+          fillEnabled: true,
+          lineWidth: { units: 'Pixels', value: state.sw },
+          lineAlignment: 'center',      // matches how canvas straddles the path
+          lineCapType: 'round',
+          lineJoinType: 'round',
+          miterLimit: 100,
+          opacity: 1,
+          blendMode: 'normal',
+          resolution: 72,
+          // Photoshop expresses dashes as multiples of the line width, which is
+          // how the canvas preview sets them too.
+          lineDashSet: current.dashed
+            ? [{ units: 'None', value: 3 }, { units: 'None', value: 2.2 }]
+            : [],
+          content: { type: 'color', color: hexToRgb(state.stroke) }
+        };
+      }
+
+      var psd = {
+        width: current.width,
+        height: current.height,
+        imageData: img,
+        children: [layer]
+      };
+      save(new Blob([window.agPsd.writePsd(psd)], { type: 'image/vnd.adobe.photoshop' }), filename('psd'));
+      say('PSD 저장 완료 — 포토샵에서 열면 셰이프 레이어로 편집됩니다.');
+    } catch (e) {
+      say('PSD 생성 실패: ' + e.message);
+    }
+  });
+
+  document.getElementById('dl-svg').addEventListener('click', function () {
+    var dash = current.dashed ? ' stroke-dasharray="' + (state.sw * 3) + ' ' + (state.sw * 2.2) + '"' : '';
+    var paths = current.subpaths.map(function (knots) {
+      return '  <path d="' + pathToSVG(knots) + '" fill="' + state.fill + '"' +
+             (state.sw > 0 ? ' stroke="' + state.stroke + '" stroke-width="' + state.sw +
+              '" stroke-linejoin="round"' + dash : '') + '/>';
+    }).join('\n');
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + current.width +
+              '" height="' + current.height + '" viewBox="0 0 ' + current.width + ' ' +
+              current.height + '">\n' + paths + '\n</svg>\n';
+    save(new Blob([svg], { type: 'image/svg+xml' }), filename('svg'));
+    say('SVG 저장 완료 — 포토샵에서 열면 래스터로 변환됩니다. 일러스트레이터용입니다.');
+  });
+
+  document.getElementById('dl-png').addEventListener('click', function () {
+    canvas.toBlob(function (blob) {
+      save(blob, filename('png'));
+      say('PNG 저장 완료.');
+    });
+  });
+
+  document.getElementById('copy-png').addEventListener('click', function () {
+    if (!navigator.clipboard || !window.ClipboardItem) {
+      say('이 브라우저에서는 클립보드 복사를 지원하지 않습니다. PNG 다운로드를 쓰세요.');
+      return;
+    }
+    canvas.toBlob(function (blob) {
+      navigator.clipboard.write([new window.ClipboardItem({ 'image/png': blob })])
+        .then(function () { say('PNG 복사 완료 — 포토샵에 픽셀로 붙습니다.'); })
+        .catch(function (e) { say('복사 실패: ' + e.message + ' (file://에서는 막힐 수 있습니다)'); });
+    });
+  });
+
+  // ══ UI ════════════════════════════════════════════════
+
+  function buildChips(host, entries, key, allowNone) {
+    var list = allowNone ? [['', '없음']].concat(entries) : entries;
+    list.forEach(function (e) {
+      var b = document.createElement('button');
+      b.className = 'chip';
+      b.type = 'button';
+      b.textContent = e[1];
+      b.setAttribute('aria-pressed', String(state[key] === e[0]));
+      b.addEventListener('click', function () {
+        state[key] = e[0];
+        Array.prototype.forEach.call(host.children, function (c) {
+          c.setAttribute('aria-pressed', String(c === b));
+        });
+        render();
+      });
+      host.appendChild(b);
+    });
+  }
+
+  buildChips(document.getElementById('shapes'),
+    Object.keys(SHAPES).map(function (k) { return [k, SHAPES[k].label]; }), 'shape', false);
+  buildChips(document.getElementById('tails'),
+    Object.keys(TAIL_ANGLE).map(function (k) { return [k, TAIL_LABEL[k]]; }), 'tail', true);
+
+  document.getElementById('vary').addEventListener('input', function (e) {
+    state.varies[state.shape] = Number(e.target.value);
+    document.getElementById('varyv').textContent = e.target.value;
+    render();
+  });
+
+  document.getElementById('bumps').addEventListener('input', function (e) {
+    state.counts[state.shape] = Number(e.target.value);
+    document.getElementById('bumpsv').textContent = e.target.value;
+    render();
+  });
+
+  [['w', 'wv'], ['h', 'hv'], ['sw', 'swv'], ['pad', 'padv']].forEach(function (pair) {
+    var input = document.getElementById(pair[0]), out = document.getElementById(pair[1]);
+    input.addEventListener('input', function () {
+      state[pair[0]] = Number(input.value);
+      out.textContent = input.value;
+      render();
+    });
+  });
+
+  document.getElementById('reseed').addEventListener('click', function () {
+    state.seed = (Math.random() * 0x7fffffff) | 0;
+    render();
+  });
+
+  ['fill', 'stroke'].forEach(function (id) {
+    document.getElementById(id).addEventListener('input', function (e) {
+      state[id] = e.target.value;
+      render();
+    });
+  });
+
+  var toggle = document.querySelector('.nav-toggle');
+  var nav = document.querySelector('#main-nav');
+  toggle.addEventListener('click', function () { nav.classList.toggle('open'); });
+
+  render();
+})();
+</script>
+</body>
+</html>
