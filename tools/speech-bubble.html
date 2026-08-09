@@ -573,7 +573,7 @@
   // it as a multiple of a spike's height instead tied the tail to the height
   // slider: the tail grew while its base stayed put, so its point kept
   // narrowing until the mitre limit chopped it off.
-  function stretchSpike(knots, cx, cy, dir, length, idx, radial) {
+  function stretchSpike(knots, cx, cy, dir, length, idx, radial, minTip) {
     var angle = TAIL_ANGLE[dir];
     var best = { i: idx == null || idx < 0 ? nearestSpike(knots, cx, cy, dir) : idx };
     if (best.i < 0) return knots;
@@ -596,15 +596,49 @@
     var h = Math.hypot(tip.x - mx, tip.y - my) || 1;
     var reach = length;                        // absolute, measured from the base
 
+    // The tail's point has the same limit to respect as any other spike: drawn
+    // keener than the mitre join will carry, it gets squared off. Its neighbours
+    // decide the angle - on a curved burst their handles run along the outline,
+    // and the rounder those are the more nearly parallel the tail's two edges
+    // leave the tip. Drawing the tail back in is the only lever here; its base
+    // is fixed and the rounding belongs to the body.
+    var ux, uy;
     if (radial) {
-      // aimed from the centre, so all six directions read distinctly
       var dm = Math.hypot(mx - cx, my - cy) || 1;
-      tip.x = cx + Math.cos(angle) * (dm + reach);
-      tip.y = cy + Math.sin(angle) * (dm + reach);
-    } else {
-      // carry on the way the spike already points: square to its own base
-      tip.x = mx + ((tip.x - mx) / h) * reach;
-      tip.y = my + ((tip.y - my) / h) * reach;
+      ux = Math.cos(angle); uy = Math.sin(angle);
+      mx = cx; my = cy; reach = dm + reach;      // aimed from the centre, so all
+    } else {                                     // six directions read distinctly
+      ux = (tip.x - mx) / h; uy = (tip.y - my) / h;   // square to its own base
+    }
+    tip.x = mx + ux * reach;
+    tip.y = my + uy * reach;
+
+    if (minTip) {
+      // Ease the rounding at the two valleys the tail springs from, rather than
+      // drawing the tail in. Their handles are what the tail's edges leave the
+      // tip along, and where the gaps are wide and the rounding deep they lie
+      // almost down the tail itself - so shortening the tail barely opens the
+      // point and the search all but erases it. Pulling those two handles back
+      // opens it directly, costs only a little of the flare at the base, and
+      // always has an answer: straight edges give the widest point there is.
+      var pox = prev.ox - prev.x, poy = prev.oy - prev.y;
+      var nix = next.ix - next.x, niy = next.iy - next.y;
+      var ang = function (f) {
+        var ax = prev.x + pox * f - tip.x, ay = prev.y + poy * f - tip.y;
+        var bx = next.x + nix * f - tip.x, by = next.y + niy * f - tip.y;
+        var la = Math.hypot(ax, ay), lb = Math.hypot(bx, by);
+        if (!la || !lb) return Math.PI;
+        return Math.acos(Math.max(-1, Math.min(1, (ax * bx + ay * by) / (la * lb))));
+      };
+      if (ang(1) < minTip) {
+        var lo = 0, hi = 1;
+        for (var q = 0; q < 24; q++) {
+          var mid = (lo + hi) / 2;
+          if (ang(mid) < minTip) hi = mid; else lo = mid;
+        }
+        prev.ox = prev.x + pox * lo; prev.oy = prev.y + poy * lo;
+        next.ix = next.x + nix * lo; next.iy = next.y + niy * lo;
+      }
     }
 
     // No handles on a burst's tail: it is a spike like the rest of them and is
@@ -850,6 +884,11 @@
   }
 
   var MITER_LIMIT = 12;
+
+  // The keenest point a mitre join will carry: its ratio is 1/sin(angle/2), so
+  // the limit fixes the angle. Leave a margin - the join is decided on the drawn
+  // curve, not on the anchors this is measured from, and the two differ slightly.
+  function tipFloor(limit) { return 2 * Math.asin(1 / (limit || MITER_LIMIT)) * 1.25; }
 
   // tail base, as a fraction of the bubble's short radius
   var TAIL_BASE = 0.55;
@@ -1117,7 +1156,7 @@
   // chord even-ing out only approximates the proportions it is handed, so a
   // spike asked for at nominal size still lands anywhere from a third over to
   // a quarter under.
-  function burstKnots(cx, cy, rx, ry, spikes, core, spikeH, vary, seed, tailDir, damp, radial, baseF, curve) {
+  function burstKnots(cx, cy, rx, ry, spikes, core, spikeH, vary, seed, tailDir, damp, radial, baseF, curve, minTip, keepHeight) {
     // The ellipse the valleys sit on is fixed, and the height slider only
     // lifts the peaks off it. Deriving both from one number, as a single
     // "inner" fraction does, means raising the spikes has to eat into the body
@@ -1126,7 +1165,13 @@
     // damp also shortens the spikes: on a narrow bubble packed with them the
     // outline knots regardless of the randomness, so easing the deviation alone
     // leaves the retry with nothing to give.
-    var spike = Math.min(rx, ry) * spikeH * (0.55 + 0.45 * (damp == null ? 1 : damp));
+    // Backing the roughness off to unknot the outline used to shorten the spikes
+    // along with it. That makes the shape lurch: nudge the count up one, the
+    // retry engages, and every spike drops and blunts at once for no reason the
+    // slider can account for. `keepHeight` leaves the height out of it, so only
+    // the deviation and the curvature give ground.
+    var hDamp = keepHeight ? 1 : (damp == null ? 1 : damp);
+    var spike = Math.min(rx, ry) * spikeH * (0.55 + 0.45 * hDamp);
     var pt = function (f) { return [cx + coreRx * Math.cos(f), cy + coreRy * Math.sin(f)]; };
 
     // One scale per spike, driving its base and its height together, so every
@@ -1209,7 +1254,35 @@
       if (hf[i] > fmax) fmax = hf[i];
     }
     var span = fmax - fmin;
-    var lowH = Math.min(rx, ry) * SPIKE_FLOOR * (0.55 + 0.45 * (damp == null ? 1 : damp));
+    var lowH = Math.min(rx, ry) * SPIKE_FLOOR * (0.55 + 0.45 * hDamp);
+
+    // Unit tangents of the core ellipse at each valley, pointing the way the
+    // outline runs. The valley handles lie along these, so the angle a spike
+    // comes to a point at is fixed by them and needs them up front.
+    var tans = [];
+    for (i = 0; i < spikes; i++) {
+      var tfx = -coreRx * Math.sin(fs[i]), tfy = coreRy * Math.cos(fs[i]);
+      var tfl = Math.hypot(tfx, tfy) || 1;
+      tans.push([tfx / tfl, tfy / tfl]);
+    }
+
+    // How keen a spike comes to a point, given how far out its tip is put.
+    //
+    // The handles either side are `curve` times the run from their valley to the
+    // tip, so each edge leaves the tip along (curve * tangent - unit run). The
+    // run's length cancels: only its direction and the tangent survive, so the
+    // angle can be had from a candidate height without building anything.
+    function tipAngle(a, b, mx, my, nx, ny, h, ta, tb) {
+      var tpx = mx + nx * h, tpy = my + ny * h;
+      var ax = tpx - a[0], ay = tpy - a[1], al = Math.hypot(ax, ay) || 1;
+      var bx = tpx - b[0], by = tpy - b[1], bl = Math.hypot(bx, by) || 1;
+      var c = curve || 0;
+      var d1x = c * ta[0] - ax / al, d1y = c * ta[1] - ay / al;
+      var d2x = -c * tb[0] - bx / bl, d2y = -c * tb[1] - by / bl;
+      var l1 = Math.hypot(d1x, d1y), l2 = Math.hypot(d2x, d2y);
+      if (!l1 || !l2) return Math.PI;
+      return Math.acos(Math.max(-1, Math.min(1, (d1x * d2x + d1y * d2y) / (l1 * l2))));
+    }
 
     // Spike tips first, so a rounded valley can be measured against the spike it
     // actually runs to rather than against the gap to the next valley.
@@ -1238,6 +1311,26 @@
       var hgt = (tailDir && i === 0)
         ? spike
         : (lowH + Math.max(0, spike - lowH) * wt) * hf[i];
+
+      // Never let a spike come to a keener point than the stroke's mitre limit
+      // will carry. Past that the join gives up and squares the tip off, so the
+      // shape stops following the height it was handed - and it is the tallest
+      // spikes, the ones the height slider is really for, that get flattened.
+      // Standing this one back down until its point is inside the limit keeps a
+      // point on every spike, at the cost of a little height on a few of them.
+      // The tail is exempt: it is re-sited afterwards anyway.
+      if (minTip && !(tailDir && i === 0)) {
+        var tb = tans[(i + 1) % spikes];
+        if (tipAngle(a, b, mx, my, nx, ny, hgt, tans[i], tb) < minTip) {
+          var lo = 0, hi = hgt;
+          for (var g = 0; g < 24; g++) {
+            var mid2 = (lo + hi) / 2;
+            if (tipAngle(a, b, mx, my, nx, ny, mid2, tans[i], tb) < minTip) hi = mid2;
+            else lo = mid2;
+          }
+          hgt = lo;
+        }
+      }
       tip.push([mx + nx * hgt, my + ny * hgt]);
     }
 
@@ -1264,10 +1357,7 @@
         // the tangent, the handles land along it, and a cubic with its controls
         // on the chord IS the chord. Short spikes came out as a faceted polygon.
         // Leaning out is what keeps them a smooth blob instead.
-        var f = fs[i];
-        var tx = -coreRx * Math.sin(f), ty = coreRy * Math.cos(f);
-        var tl = Math.hypot(tx, ty) || 1;
-        tx /= tl; ty /= tl;
+        var tx = tans[i][0], ty = tans[i][1];
         var pv = tip[(i - 1 + spikes) % spikes], nv = tip[i];
         var kin = curve * Math.hypot(pv[0] - a[0], pv[1] - a[1]);
         var kout = curve * Math.hypot(nv[0] - a[0], nv[1] - a[1]);
@@ -1325,7 +1415,7 @@
     // burstKnots emits valley, spike, valley, spike... so the valleys are even.
     spiky:       { label: '뾰족(외침)',  count: { min: 14, max: 20, def: 16, label: '뾰족 개수' }, height: { min: 10, max: 60, def: 26, label: '뾰족 높이' }, core: 0.74, stretchTail: { length: 0.88 }, tailBase: 0.385, build: function (b, d, tailDir) { return burstKnots(b.cx, b.cy, b.rx, b.ry, count('spiky'), SHAPES.spiky.core, heightOf('spiky'), 0, 0, tailDir, 1, false, SHAPES.spiky.tailBase); } },
     comic:       { label: '만화 외침',   seeded: true, damped: true, count: { min: 14, max: 28, def: 18, label: '뾰족 개수' }, vary: { def: 65, label: '뾰족 크기 편차' }, height: { min: 10, max: 60, def: 38, label: '뾰족 높이' }, core: 0.62, stretchTail: { length: 1.22, radial: true }, tailBase: 0.735, build: function (b, d, tailDir) { return burstKnots(b.cx, b.cy, b.rx, b.ry, count('comic'), SHAPES.comic.core, heightOf('comic'), varyOf('comic') * (d == null ? 1 : d), state.seed, tailDir, d, true, SHAPES.comic.tailBase); } },
-    curvy:       { label: '곡선 외침',   seeded: true, damped: true, miterLimit: 60, count: { min: 9, max: 28, def: 18, label: '뾰족 개수' }, vary: { def: 65, label: '뾰족 크기 편차' }, height: { min: 10, max: 60, def: 38, floorPerSpike: 240, label: '뾰족 높이' }, core: 0.62, stretchTail: { length: 1.22, radial: true }, tailBase: 0.735, build: function (b, d, tailDir) { return burstKnots(b.cx, b.cy, b.rx, b.ry, count('curvy'), SHAPES.curvy.core, heightOf('curvy'), varyOf('curvy') * (d == null ? 1 : d), state.seed, tailDir, d, true, SHAPES.curvy.tailBase, 0.42 * (d == null ? 1 : d)); } },
+    curvy:       { label: '곡선 외침',   seeded: true, damped: true, miterLimit: 60, count: { min: 9, max: 28, def: 18, label: '뾰족 개수' }, vary: { def: 65, label: '뾰족 크기 편차' }, height: { min: 10, max: 60, def: 38, floorPerSpike: 240, label: '뾰족 높이' }, core: 0.62, stretchTail: { length: 1.22, radial: true }, tailBase: 0.735, build: function (b, d, tailDir) { return burstKnots(b.cx, b.cy, b.rx, b.ry, count('curvy'), SHAPES.curvy.core, heightOf('curvy'), varyOf('curvy') * (d == null ? 1 : d), state.seed, tailDir, d, true, SHAPES.curvy.tailBase, 0.42 * (d == null ? 1 : d), tipFloor(SHAPES.curvy.miterLimit), true); } },
     whisper:     { label: '속삭임',      build: function (b) { return ellipseKnots(b.cx, b.cy, b.rx, b.ry); }, dashed: true }
   };
 
@@ -1389,7 +1479,8 @@
         return {
           subpaths: [stretchSpike(body, b.cx, b.cy, tailDir,
                                   Math.min(b.rx, b.ry) * shape.stretchTail.length, 1,
-                                  shape.stretchTail.radial)],
+                                  shape.stretchTail.radial,
+                                  shape.miterLimit ? tipFloor(shape.miterLimit) : 0)],
           dashed: !!shape.dashed
         };
       }
@@ -1414,17 +1505,30 @@
     // holes under the even-odd fill rule. Splicing the tail can knot it too, so
     // the check has to run on the finished path, not just the body. Build it,
     // check it, and back the roughness off only when it actually fails.
-    var out;
-    for (var attempt = 0; attempt < 6; attempt++) {
-      var damp = Math.pow(0.7, attempt);
-      out = assemble(shape.build(b, damp, tailDir), damp);
-      var knotted = false;
-      for (var i = 0; i < out.subpaths.length; i++) {
-        if (selfIntersects(out.subpaths[i])) { knotted = true; break; }
+    function tryAt(d) {
+      var o = assemble(shape.build(b, d, tailDir), d);
+      for (var i = 0; i < o.subpaths.length; i++) {
+        if (selfIntersects(o.subpaths[i])) return null;
       }
-      if (!knotted) return out;
+      return o;
     }
-    return assemble(shape.build(b, 0, tailDir), 0);   // last resort: no roughness at all
+
+    var full = tryAt(1);
+    if (full) return full;
+
+    // Hunt for the most roughness that still comes out untangled, rather than
+    // stepping down a fixed ladder. A ladder makes the shape lurch: creep a
+    // slider up to where the outline first knots and the rebuild lands a whole
+    // rung lower, so every peak and valley moves at once for a one-step change.
+    // Closing in on the threshold instead means the shape either side of it
+    // differs by as little as the search resolution.
+    var lo = 0, hi = 1, best = null;
+    for (var k = 0; k < 11; k++) {
+      var mid = (lo + hi) / 2;
+      var got = tryAt(mid);
+      if (got) { best = got; lo = mid; } else hi = mid;
+    }
+    return best || assemble(shape.build(b, 0, tailDir), 0);   // nothing held: no roughness at all
   }
 
   // ══ Derivations ═══════════════════════════════════════
