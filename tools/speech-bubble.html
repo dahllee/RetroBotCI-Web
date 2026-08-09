@@ -285,6 +285,12 @@
         <input type="range" id="bumps" min="6" max="24" step="1" value="12">
       </div>
 
+      <!-- only for shapes whose elements have an adjustable height -->
+      <div class="field" id="height-opts" hidden>
+        <label for="hgt"><span id="hgt-label">봉우리 높이</span> <span class="val" id="hgtv">38</span>%</label>
+        <input type="range" id="hgt" min="10" max="60" step="1" value="38">
+      </div>
+
       <!-- only for shapes whose elements vary in size -->
       <div class="field" id="vary-opts" hidden>
         <label for="vary"><span id="vary-label">크기 편차</span> <span class="val" id="varyv">65</span>%</label>
@@ -519,6 +525,10 @@
     return best ? best.i : -1;
   }
 
+  // `length` is how far the tip stands off the tail's base, in pixels. Taking
+  // it as a multiple of a spike's height instead tied the tail to the height
+  // slider: the tail grew while its base stayed put, so its point kept
+  // narrowing until the mitre limit chopped it off.
   function stretchSpike(knots, cx, cy, dir, length, idx, radial) {
     var angle = TAIL_ANGLE[dir];
     var best = { i: idx == null || idx < 0 ? nearestSpike(knots, cx, cy, dir) : idx };
@@ -540,7 +550,7 @@
     // point came out keener in some directions than others.
     var mx = (prev.x + next.x) / 2, my = (prev.y + next.y) / 2;
     var h = Math.hypot(tip.x - mx, tip.y - my) || 1;
-    var reach = h * length;                    // measured from the base
+    var reach = length;                        // absolute, measured from the base
 
     if (radial) {
       // aimed from the centre, so all six directions read distinctly
@@ -559,6 +569,9 @@
     // it left its controls behind.
     tip.ix = tip.x; tip.iy = tip.y;
     tip.ox = tip.x; tip.oy = tip.y;
+    // prev.ox and next.ix are left as the body made them: sharp on a plain
+    // burst, and on a curved one the same rounding as every other valley, so
+    // the tail flares out of the outline instead of breaking away from it.
     return out;
   }
 
@@ -622,6 +635,10 @@
 
   // tail base, as a fraction of the bubble's short radius
   var TAIL_BASE = 0.55;
+
+  // the height slider's bottom, and how much of its travel the shortest spike sees
+  var SPIKE_FLOOR = 0.10;
+  var SPIKE_FLOOR_W = 0.25;
 
   var CLOUD = { puff: 0.62, sizeVar: 1.15, radial: 0.14 };
 
@@ -882,12 +899,16 @@
   // chord even-ing out only approximates the proportions it is handed, so a
   // spike asked for at nominal size still lands anywhere from a third over to
   // a quarter under.
-  function burstKnots(cx, cy, rx, ry, spikes, inner, vary, seed, tailDir, damp, radial, baseF) {
-    var coreRx = rx * inner, coreRy = ry * inner;
+  function burstKnots(cx, cy, rx, ry, spikes, core, spikeH, vary, seed, tailDir, damp, radial, baseF, curve) {
+    // The ellipse the valleys sit on is fixed, and the height slider only
+    // lifts the peaks off it. Deriving both from one number, as a single
+    // "inner" fraction does, means raising the spikes has to eat into the body
+    // - the valleys sink inward at exactly the rate the points rise.
+    var coreRx = rx * core, coreRy = ry * core;
     // damp also shortens the spikes: on a narrow bubble packed with them the
     // outline knots regardless of the randomness, so easing the deviation alone
     // leaves the retry with nothing to give.
-    var spike = Math.min(rx, ry) * (1 - inner) * (0.55 + 0.45 * (damp == null ? 1 : damp));
+    var spike = Math.min(rx, ry) * spikeH * (0.55 + 0.45 * (damp == null ? 1 : damp));
     var pt = function (f) { return [cx + coreRx * Math.cos(f), cy + coreRy * Math.sin(f)]; };
 
     // One scale per spike, driving its base and its height together, so every
@@ -958,11 +979,25 @@
     mean /= spikes;
     if (!ref) ref = mean;
 
-    var out = [];
+    // Raising the height slider lifts the tall spikes far more than the short
+    // ones, instead of scaling every spike by the same factor. Scaling them
+    // together keeps their proportions but flattens the character of the
+    // shape - push it up and the small spikes grow into big ones too, so a
+    // ragged burst turns into a uniformly spiky one.
+    var hf = [], fmin = Infinity, fmax = -Infinity;
+    for (i = 0; i < spikes; i++) {
+      hf.push(chord[i] / ref);
+      if (hf[i] < fmin) fmin = hf[i];
+      if (hf[i] > fmax) fmax = hf[i];
+    }
+    var span = fmax - fmin;
+    var lowH = Math.min(rx, ry) * SPIKE_FLOOR * (0.55 + 0.45 * (damp == null ? 1 : damp));
+
+    // Spike tips first, so a rounded valley can be measured against the spike it
+    // actually runs to rather than against the gap to the next valley.
+    var tip = [];
     for (i = 0; i < spikes; i++) {
       var a = pts[i], b = pts[(i + 1) % spikes];
-      out.push(sharp(a[0], a[1]));                       // valley
-
       // Two ways to point a spike, and they only agree on a circle: straight
       // out from the centre of the bubble, or square to the spike's own base.
       // On a flat bubble they diverge by up to 60 degrees.
@@ -980,8 +1015,53 @@
         if (nx * (mx - cx) + ny * (my - cy) < 0) { nx = -nx; ny = -ny; }
       }
       // the tail keeps the nominal height whatever its base came out as
-      var hgt = (tailDir && i === 0) ? spike : spike * (chord[i] / ref);
-      out.push(sharp(mx + nx * hgt, my + ny * hgt));     // spike; tail is index 1
+      // weight: the smallest spike responds least to the slider, the largest most
+      var wt = span < 1e-6 ? 1 : SPIKE_FLOOR_W + (1 - SPIKE_FLOOR_W) * (hf[i] - fmin) / span;
+      var hgt = (tailDir && i === 0)
+        ? spike
+        : (lowH + Math.max(0, spike - lowH) * wt) * hf[i];
+      tip.push([mx + nx * hgt, my + ny * hgt]);
+    }
+
+    var out = [];
+    for (i = 0; i < spikes; i++) {
+      var a = pts[i];
+
+      if (curve) {
+        // Round the valleys while leaving the points alone: run the handles
+        // along the tangent of the ellipse the valleys sit on, and scale each
+        // against the run to the spike it heads for.
+        //
+        // Budget them against the spike, not against the gap to the next valley.
+        // The tangent leans outside the ellipse - the valleys are inscribed in
+        // it - so a handle longer than the run to the spike carries the curve out
+        // past both of them and the burst reads as a lumpy polygon. Few spikes is
+        // where that bit: the gaps grow but the spikes do not, so the tangent has
+        // the furthest to lean.
+        //
+        // The lean itself has to stay. Every attempt to hold the curve inside the
+        // valley-to-spike chord - squaring the handles to the bisector of the two
+        // spikes, or running them along the line joining the neighbouring valleys
+        // - dies the same way as the spikes shorten: that chord swings round to
+        // the tangent, the handles land along it, and a cubic with its controls
+        // on the chord IS the chord. Short spikes came out as a faceted polygon.
+        // Leaning out is what keeps them a smooth blob instead.
+        var f = fs[i];
+        var tx = -coreRx * Math.sin(f), ty = coreRy * Math.cos(f);
+        var tl = Math.hypot(tx, ty) || 1;
+        tx /= tl; ty /= tl;
+        var pv = tip[(i - 1 + spikes) % spikes], nv = tip[i];
+        var kin = curve * Math.hypot(pv[0] - a[0], pv[1] - a[1]);
+        var kout = curve * Math.hypot(nv[0] - a[0], nv[1] - a[1]);
+        out.push({ x: a[0], y: a[1],
+                   ix: a[0] - tx * kin, iy: a[1] - ty * kin,
+                   ox: a[0] + tx * kout, oy: a[1] + ty * kout,
+                   linked: true });
+      } else {
+        out.push(sharp(a[0], a[1]));                     // valley
+      }
+
+      out.push(sharp(tip[i][0], tip[i][1]));             // spike; tail is index 1
     }
     return out;
   }
@@ -990,6 +1070,9 @@
 
   // slider is 0-100%; 100% lets a spike run from almost nothing to nearly double
   function varyOf(key) { return (state.varies[key] / 100) * 0.9; }
+
+  // how far a spike stands off the core, as a share of the short radius
+  function heightOf(key) { return state.heights[key] / 100; }
 
   var SHAPES = {
     ellipse:     { label: '타원',        build: function (b) { return ellipseKnots(b.cx, b.cy, b.rx, b.ry); } },
@@ -1002,8 +1085,9 @@
     // Burst outlines already bristle with spikes, so their tail reaches
     // further out to read as a tail rather than as another spike.
     // burstKnots emits valley, spike, valley, spike... so the valleys are even.
-    spiky:       { label: '뾰족(외침)',  count: { min: 14, max: 20, def: 16, label: '뾰족 개수' }, stretchTail: { length: 3.4 }, tailBase: 0.385, build: function (b, d, tailDir) { return burstKnots(b.cx, b.cy, b.rx, b.ry, count('spiky'), 0.74, 0, 0, tailDir, 1, false, SHAPES.spiky.tailBase); } },
-    comic:       { label: '만화 외침',   seeded: true, damped: true, count: { min: 14, max: 28, def: 18, label: '뾰족 개수' }, vary: { def: 65, label: '뾰족 크기 편차' }, stretchTail: { length: 3.2, radial: true }, tailBase: 0.735, build: function (b, d, tailDir) { return burstKnots(b.cx, b.cy, b.rx, b.ry, count('comic'), 0.62, varyOf('comic') * (d == null ? 1 : d), state.seed, tailDir, d, true, SHAPES.comic.tailBase); } },
+    spiky:       { label: '뾰족(외침)',  count: { min: 14, max: 20, def: 16, label: '뾰족 개수' }, height: { min: 10, max: 60, def: 26, label: '뾰족 높이' }, core: 0.74, stretchTail: { length: 0.88 }, tailBase: 0.385, build: function (b, d, tailDir) { return burstKnots(b.cx, b.cy, b.rx, b.ry, count('spiky'), SHAPES.spiky.core, heightOf('spiky'), 0, 0, tailDir, 1, false, SHAPES.spiky.tailBase); } },
+    comic:       { label: '만화 외침',   seeded: true, damped: true, count: { min: 14, max: 28, def: 18, label: '뾰족 개수' }, vary: { def: 65, label: '뾰족 크기 편차' }, height: { min: 10, max: 60, def: 38, label: '뾰족 높이' }, core: 0.62, stretchTail: { length: 1.22, radial: true }, tailBase: 0.735, build: function (b, d, tailDir) { return burstKnots(b.cx, b.cy, b.rx, b.ry, count('comic'), SHAPES.comic.core, heightOf('comic'), varyOf('comic') * (d == null ? 1 : d), state.seed, tailDir, d, true, SHAPES.comic.tailBase); } },
+    curvy:       { label: '곡선 외침',   seeded: true, damped: true, miterLimit: 60, count: { min: 9, max: 28, def: 18, label: '뾰족 개수' }, vary: { def: 65, label: '뾰족 크기 편차' }, height: { min: 10, max: 60, def: 38, floorPerSpike: 240, label: '뾰족 높이' }, core: 0.62, stretchTail: { length: 1.22, radial: true }, tailBase: 0.735, build: function (b, d, tailDir) { return burstKnots(b.cx, b.cy, b.rx, b.ry, count('curvy'), SHAPES.curvy.core, heightOf('curvy'), varyOf('curvy') * (d == null ? 1 : d), state.seed, tailDir, d, true, SHAPES.curvy.tailBase, 0.42 * (d == null ? 1 : d)); } },
     whisper:     { label: '속삭임',      build: function (b) { return ellipseKnots(b.cx, b.cy, b.rx, b.ry); }, dashed: true }
   };
 
@@ -1065,7 +1149,8 @@
         // The builder was handed the tail direction, so the tail spike is
         // already sitting at index 1 at a fixed place and size.
         return {
-          subpaths: [stretchSpike(body, b.cx, b.cy, tailDir, shape.stretchTail.length, 1,
+          subpaths: [stretchSpike(body, b.cx, b.cy, tailDir,
+                                  Math.min(b.rx, b.ry) * shape.stretchTail.length, 1,
                                   shape.stretchTail.radial)],
           dashed: !!shape.dashed
         };
@@ -1182,7 +1267,7 @@
         // carry the same number, or preview and export disagree about which
         // corners survive.
         ctx.lineJoin = o.join || 'miter';
-        ctx.miterLimit = MITER_LIMIT;
+        ctx.miterLimit = o.miter || MITER_LIMIT;
         ctx.stroke();
         ctx.restore();
       }
@@ -1193,12 +1278,13 @@
 
   var state = { shape: 'ellipse', tail: 'bottom-left', fill: '#ffffff',
                 stroke: '#000000', w: 560, h: 320, sw: 3, pad: 40,
-                counts: {}, varies: {}, seed: (Math.random() * 0x7fffffff) | 0 };
+                counts: {}, varies: {}, heights: {}, seed: (Math.random() * 0x7fffffff) | 0 };
 
   // each shape remembers its own settings, so switching back and forth keeps them
   Object.keys(SHAPES).forEach(function (k) {
     if (SHAPES[k].count) state.counts[k] = SHAPES[k].count.def;
     if (SHAPES[k].vary) state.varies[k] = SHAPES[k].vary.def;
+    if (SHAPES[k].height) state.heights[k] = SHAPES[k].height.def;
   });
   var current = null;   // { subpaths, dashed, width, height }
 
@@ -1210,6 +1296,7 @@
       subpaths: translate(built.subpaths, m - box.x, m - box.y),
       dashed: built.dashed,
       join: SHAPES[state.shape].softJoin ? 'round' : 'miter',
+      miter: SHAPES[state.shape].miterLimit || MITER_LIMIT,
       width: Math.ceil(box.w + m * 2),
       height: Math.ceil(box.h + m * 2)
     };
@@ -1230,6 +1317,28 @@
       document.getElementById('bumpsv').textContent = input.value;
       document.getElementById('bumps-label').textContent = cfg.label;
     }
+    var hcfg = shape.height;
+    document.getElementById('height-opts').hidden = !hcfg;
+    if (hcfg) {
+      var hin = document.getElementById('hgt');
+      // Few spikes need tall ones. A spike stands on the chord between its two
+      // valleys, and the wider the gap the further inside the core that chord
+      // sags - a seventh of the way round gives up a tenth of the radius. A
+      // spike shorter than the sag never reaches the outline at all: the tips
+      // fall inside the core, the outline collapses onto the inscribed polygon,
+      // and the rounded valleys come out as flat faceted edges. Measured on the
+      // curved burst, the runs stop flattening at a height of about 26 with
+      // seven spikes, 18 with ten, and past fourteen it never shows up.
+      var hmin = hcfg.min;
+      if (hcfg.floorPerSpike && cfg) {
+        hmin = Math.max(hmin, Math.round(hcfg.floorPerSpike / state.counts[state.shape]));
+        if (state.heights[state.shape] < hmin) state.heights[state.shape] = hmin;
+      }
+      hin.min = hmin; hin.max = hcfg.max;
+      hin.value = state.heights[state.shape];
+      document.getElementById('hgtv').textContent = hin.value;
+      document.getElementById('hgt-label').textContent = hcfg.label;
+    }
     var vcfg = shape.vary;
     document.getElementById('vary-opts').hidden = !vcfg;
     if (vcfg) {
@@ -1247,7 +1356,7 @@
     ctx.clearRect(0, 0, current.width, current.height);
     paint(ctx, current.subpaths, {
       fill: state.fill, stroke: state.stroke,
-      strokeWidth: state.sw, dashed: current.dashed, join: current.join
+      strokeWidth: state.sw, dashed: current.dashed, join: current.join, miter: current.miter
     });
     var anchors = current.subpaths.reduce(function (n, k) { return n + k.length; }, 0);
     meta.textContent = current.width + ' × ' + current.height + ' px · ' +
@@ -1287,7 +1396,7 @@
       var lctx = layer.getContext('2d');
       paint(lctx, current.subpaths, {
         fill: state.fill, stroke: state.stroke,
-        strokeWidth: state.sw, dashed: current.dashed, join: current.join
+        strokeWidth: state.sw, dashed: current.dashed, join: current.join, miter: current.miter
       });
       var img = lctx.getImageData(0, 0, current.width, current.height);
 
@@ -1319,7 +1428,7 @@
           lineAlignment: 'center',      // matches how canvas straddles the path
           lineCapType: 'round',
           lineJoinType: current.join,
-          miterLimit: MITER_LIMIT,
+          miterLimit: current.miter,
           opacity: 1,
           blendMode: 'normal',
           resolution: 72,
@@ -1350,7 +1459,7 @@
     var paths = current.subpaths.map(function (knots) {
       return '  <path d="' + pathToSVG(knots) + '" fill="' + state.fill + '"' +
              (state.sw > 0 ? ' stroke="' + state.stroke + '" stroke-width="' + state.sw +
-              '" stroke-linejoin="' + current.join + '" stroke-miterlimit="' + MITER_LIMIT + '"' + dash : '') + '/>';
+              '" stroke-linejoin="' + current.join + '" stroke-miterlimit="' + current.miter + '"' + dash : '') + '/>';
     }).join('\n');
     var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + current.width +
               '" height="' + current.height + '" viewBox="0 0 ' + current.width + ' ' +
@@ -1403,6 +1512,12 @@
     Object.keys(SHAPES).map(function (k) { return [k, SHAPES[k].label]; }), 'shape', false);
   buildChips(document.getElementById('tails'),
     Object.keys(TAIL_ANGLE).map(function (k) { return [k, TAIL_LABEL[k]]; }), 'tail', true);
+
+  document.getElementById('hgt').addEventListener('input', function (e) {
+    state.heights[state.shape] = Number(e.target.value);
+    document.getElementById('hgtv').textContent = e.target.value;
+    render();
+  });
 
   document.getElementById('vary').addEventListener('input', function (e) {
     state.varies[state.shape] = Number(e.target.value);
