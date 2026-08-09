@@ -263,11 +263,11 @@
       </div>
 
       <div class="field">
-        <label for="w">가로 <span class="val" id="wv">560</span> px</label>
+        <label for="w"><span id="w-label">가로</span> <span class="val" id="wv">560</span> px</label>
         <input type="range" id="w" min="120" max="1600" step="10" value="560">
       </div>
       <div class="field">
-        <label for="h">세로 <span class="val" id="hv">320</span> px</label>
+        <label for="h"><span id="h-label">세로</span> <span class="val" id="hv">320</span> px</label>
         <input type="range" id="h" min="80" max="1200" step="10" value="320">
       </div>
       <div class="field">
@@ -296,6 +296,9 @@
         <label for="vary"><span id="vary-label">크기 편차</span> <span class="val" id="varyv">65</span>%</label>
         <input type="range" id="vary" min="0" max="100" step="1" value="65">
       </div>
+
+      <!-- filled in from the shape's own `params` list -->
+      <div id="extra-opts"></div>
     </div>
 
     <!-- ── Preview ── -->
@@ -479,15 +482,56 @@
 
     var segs = knotsToSegments(knots);
 
-    var h1 = rayHit(segs, cx, cy, angle - width / 2);
-    var h2 = rayHit(segs, cx, cy, angle + width / 2);
+    // Size the tail against the body rather than against how far the outline
+    // happens to reach this way. The width below is an angle at the centre and
+    // the reach a share of the centre-to-outline distance, which is near enough
+    // constant on a single ellipse but not on one with a second lobe stuck to
+    // it: park the satellite near the tail and that distance jumps, taking the
+    // base and the length with it. Worse, an angular slice wide enough to span
+    // both lobes puts its two edges on different ones, and the base then
+    // stretches across the gap between them.
+    //
+    // So walk out along the tail's own direction, and open up either side only
+    // until the outline is a set distance from where that landed. The base is
+    // then a fixed length of outline wherever it attaches, and the tip stands
+    // off it by a fixed amount.
+    var w1 = width / 2, w2 = width / 2, edge = null;
+    if (opts.fromScale && scale) {
+      var mid = rayHit(segs, cx, cy, angle);
+      if (mid) {
+        edge = mid.k;
+        var p0x = cx + Math.cos(angle) * mid.k, p0y = cy + Math.sin(angle) * mid.k;
+        var half = (opts.widthFactor || 0.28) * scale / 2;
+        var openTo = function (sign) {
+          var lo = 0, hi = Math.PI / 2;
+          for (var i = 0; i < 32; i++) {
+            var m = (lo + hi) / 2, a = angle + sign * m;
+            var h = rayHit(segs, cx, cy, a);
+            if (!h) { hi = m; continue; }
+            var dx = cx + Math.cos(a) * h.k - p0x, dy = cy + Math.sin(a) * h.k - p0y;
+            if (Math.hypot(dx, dy) < half) lo = m; else hi = m;
+          }
+          return (lo + hi) / 2;
+        };
+        w1 = openTo(-1);
+        w2 = openTo(1);
+      }
+    }
+
+    var h1 = rayHit(segs, cx, cy, angle - w1);
+    var h2 = rayHit(segs, cx, cy, angle + w2);
     if (!h1 || !h2) return knots;
 
     // Keep the long way round: from the far edge of the tail back to the near one.
     var kept = walk(segs, h2, h1);
     if (!kept.length) return knots;
 
-    var reach = Math.max(h1.k, h2.k) * (1 + length);
+    // Clear whichever edge sticks out further, then stand off by a fixed amount
+    // rather than by a share of the distance already travelled.
+    var far = Math.max(h1.k, h2.k, edge == null ? 0 : edge);
+    var reach = opts.fromScale && scale
+      ? far + (opts.lengthFactor || 0.62) * scale
+      : far * (1 + length);
     var out = segmentsToKnots(kept);
     var last = kept[kept.length - 1];
     var base1 = { x: last[6], y: last[7] };
@@ -585,6 +629,180 @@
       { x: cx - rx, y: cy,      ix: cx - rx, iy: cy + ky, ox: cx - rx, oy: cy - ky, linked: true },
       { x: cx,      y: cy - ry, ix: cx - kx, iy: cy - ry, ox: cx + kx, oy: cy - ry, linked: true }
     ];
+  }
+
+  // ── two ellipses fused into one outline ─────────────────
+  // Overlapping subpaths would look right filled and wrong stroked: Photoshop
+  // fills their union, but the stroke follows every subpath, so both ellipses
+  // would keep their buried halves as lines across the middle. The outline has
+  // to be one path with those halves gone.
+
+  function ellipsePt(e, t) { return [e.cx + e.rx * Math.cos(t), e.cy + e.ry * Math.sin(t)]; }
+  // dP/dt, which is what the arc-to-cubic handle length scales
+  function ellipseVel(e, t) { return [-e.rx * Math.sin(t), e.ry * Math.cos(t)]; }
+  // below 1 inside, 1 on the outline, above 1 outside
+  function ellipseAt(e, x, y) {
+    var a = (x - e.cx) / e.rx, b = (y - e.cy) / e.ry;
+    return a * a + b * b;
+  }
+  function ellipseParam(e, x, y) {
+    return Math.atan2((y - e.cy) / e.ry, (x - e.cx) / e.rx);
+  }
+
+  // Where the outline of `a` cuts through `b`, as parameters on `a`. Two
+  // ellipses that genuinely overlap cross exactly twice; apart, or one swallowed
+  // by the other, gives none, and the caller has to fall back. No closed form
+  // for this, so: sweep for sign changes, then bisect each one.
+  function ellipseCrossings(a, b) {
+    var N = 720, hits = [];
+    var p0 = ellipsePt(a, 0);
+    var prev = ellipseAt(b, p0[0], p0[1]) < 1;
+    for (var i = 1; i <= N; i++) {
+      var t = (i / N) * TAU, p = ellipsePt(a, t);
+      var cur = ellipseAt(b, p[0], p[1]) < 1;
+      if (cur !== prev) {
+        var lo = ((i - 1) / N) * TAU, hi = t;
+        for (var k = 0; k < 52; k++) {
+          var mid = (lo + hi) / 2, pm = ellipsePt(a, mid);
+          if ((ellipseAt(b, pm[0], pm[1]) < 1) === prev) lo = mid; else hi = mid;
+        }
+        hits.push((lo + hi) / 2);
+        prev = cur;
+      }
+    }
+    return hits;
+  }
+
+  // The arc of `e` from t0 to t1 as cubics, cut into quarter turns or less.
+  // (4/3)tan(d/4) times the parametric velocity is the standard handle for an
+  // arc of d radians - exact on a circle, and an ellipse is only a stretched
+  // circle, so the same numbers carry over.
+  function ellipseArcKnots(e, t0, t1) {
+    var span = t1 - t0;
+    var n = Math.max(1, Math.ceil(Math.abs(span) / (Math.PI / 2)));
+    var d = span / n, k = (4 / 3) * Math.tan(d / 4);
+    var out = [];
+    for (var i = 0; i <= n; i++) {
+      var t = t0 + d * i, p = ellipsePt(e, t), v = ellipseVel(e, t);
+      out.push({ x: p[0], y: p[1],
+                 ix: p[0] - v[0] * k, iy: p[1] - v[1] * k,
+                 ox: p[0] + v[0] * k, oy: p[1] + v[1] * k, linked: true });
+    }
+    return out;
+  }
+
+  function unionKnots(e1, e2) {
+    var hits = ellipseCrossings(e1, e2);
+    if (hits.length !== 2) {
+      // not fused at all: draw whichever one contains the other, or the larger
+      var big = e1.rx * e1.ry >= e2.rx * e2.ry ? e1 : e2;
+      return ellipseKnots(big.cx, big.cy, big.rx, big.ry);
+    }
+
+    // Of the two arcs between the crossings, the outline keeps the one outside
+    // the other ellipse. Both arcs are then walked with t increasing: on a union
+    // of two convex shapes the boundary turns the same way throughout, so that
+    // one direction serves for both and the winding stays consistent.
+    var mid = ellipsePt(e1, (hits[0] + hits[1]) / 2);
+    var a, b;
+    if (ellipseAt(e2, mid[0], mid[1]) > 1) { a = hits[0]; b = hits[1]; }
+    else { a = hits[1]; b = hits[0] + TAU; }
+
+    var pa = ellipsePt(e1, a), pb = ellipsePt(e1, b);
+    var vb = ellipseParam(e2, pb[0], pb[1]);
+    var va = ellipseParam(e2, pa[0], pa[1]);
+    while (va <= vb) va += TAU;
+
+    var arc1 = ellipseArcKnots(e1, a, b);
+    var arc2 = ellipseArcKnots(e2, vb, va);
+    var out = arc1.slice(), last = out.length - 1;
+
+    // The two crossings are corners, not smooth points: each keeps the handle of
+    // the arc arriving and takes the handle of the arc leaving.
+    out[last] = { x: out[last].x, y: out[last].y,
+                  ix: out[last].ix, iy: out[last].iy,
+                  ox: arc2[0].ox, oy: arc2[0].oy, linked: false };
+    for (var i = 1; i < arc2.length - 1; i++) out.push(arc2[i]);
+    var back = arc2[arc2.length - 1];
+    out[0] = { x: out[0].x, y: out[0].y, ix: back.ix, iy: back.iy,
+               ox: out[0].ox, oy: out[0].oy, linked: false };
+    return out;
+  }
+
+  // How far the satellite can be pushed out along the normal before it comes
+  // away. There is no single outline past that point, so the slider spends a
+  // share of this rather than a length of its own.
+  // The span of distances over which the satellite reads as a second lobe:
+  // closer than the near end it has swallowed the main ellipse whole, further
+  // than the far end it has come away. The slider spends this rather than a
+  // length of its own, so neither end can be overshot at any size.
+  //
+  // The near end is only above nought when the satellite is the bigger of the
+  // two - nothing crosses the outline of something it contains - which is also
+  // why this sweeps for the band before bisecting inside it. Bisecting straight
+  // from nought would take a distance with no crossings as its floor and could
+  // hand back one where the two are apart.
+  function reachBand(e1, srx, sry, px, py, nx, ny) {
+    var cap = Math.max(e1.rx, e1.ry) + Math.max(srx, sry);
+    function fused(d) {
+      return ellipseCrossings(e1, { cx: px + nx * d, cy: py + ny * d,
+                                    rx: srx, ry: sry }).length === 2;
+    }
+    function edge(inside, outside) {         // bisect towards the outside one
+      for (var k = 0; k < 26; k++) {
+        var mid = (inside + outside) / 2;
+        if (fused(mid)) inside = mid; else outside = mid;
+      }
+      return inside;
+    }
+    var N = 48, step = cap / N, first = -1, last = -1;
+    for (var i = 0; i <= N; i++) {
+      if (fused(i * step)) { if (first < 0) first = i; last = i; }
+      else if (first >= 0) break;
+    }
+    if (first < 0) return [0, 0];            // never crosses at any distance
+    return [first === 0 ? 0 : edge(first * step, (first - 1) * step),
+            edge(last * step, Math.min(cap, (last + 1) * step))];
+  }
+
+  // Stop just short of the tangent, where the two crossings meet and the join
+  // pinches to nothing. At the limit itself there is no lens left to draw.
+  var DUO_HOLD = 0.94;
+
+  // furthest the satellite can be set from the last build, for the slider's cap
+  var duoReach = 0;
+
+  function duoKnots(b, p) {
+    var e1 = { cx: b.cx, cy: b.cy, rx: b.rx, ry: b.ry };
+    // 0 at the top and running clockwise, which is what the parametrisation
+    // already does once y points down
+    var t = (p.pos / 180) * Math.PI - Math.PI / 2;
+    var base = ellipsePt(e1, t);
+    // the ellipse's normal, not the ray from its centre: on a flat bubble those
+    // point noticeably different ways, and it is the normal that reads as
+    // "straight out from here"
+    var gx = (base[0] - e1.cx) / (e1.rx * e1.rx);
+    var gy = (base[1] - e1.cy) / (e1.ry * e1.ry);
+    var gl = Math.hypot(gx, gy) || 1;
+    var nx = gx / gl, ny = gy / gl;
+    var srx = p.w2 / 2, sry = p.h2 / 2;
+    // Stop short of either end of the band, where the crossings meet and the
+    // join has no width. Only the far end is always a tangency: the near end is
+    // one when the satellite would otherwise swallow the main ellipse, but where
+    // it is simply nought - the satellite centred on the outline, the usual case
+    // - there is nothing degenerate about it and the slider keeps its full reach.
+    var band = reachBand(e1, srx, sry, base[0], base[1], nx, ny);
+    var span = band[1] - band[0];
+    var near = band[0] > 0 ? band[0] + span * (1 - DUO_HOLD) : 0;
+    var far = Math.max(near, band[0] + span * DUO_HOLD);
+    // The slider is a gap in pixels, measured from the outline of the main
+    // ellipse, so resizing that ellipse carries the satellite along at the same
+    // remove instead of rescaling the gap under it. What resizing does change is
+    // how far it CAN go, so the reachable end is published for the slider to cap
+    // itself with, the way the spike height caps itself against the spike count.
+    duoReach = far;
+    var d = Math.min(Math.max(p.gap, near), far);
+    return unionKnots(e1, { cx: base[0] + nx * d, cy: base[1] + ny * d, rx: srx, ry: sry });
   }
 
   function rectKnots(x0, y0, x1, y1) {
@@ -1074,8 +1292,28 @@
   // how far a spike stands off the core, as a share of the short radius
   function heightOf(key) { return state.heights[key] / 100; }
 
+  // whatever else a shape declared in `params`, as { key: value }
+  function paramsOf(key) { return state.params[key]; }
+
   var SHAPES = {
     ellipse:     { label: '타원',        build: function (b) { return ellipseKnots(b.cx, b.cy, b.rx, b.ry); } },
+    // Both ellipses are sized in pixels, each by its own pair of sliders, so
+    // widening one leaves the other alone. Measuring the satellite as a share of
+    // the main ellipse instead would have tied them together: every one of these
+    // four sliders would have resized both.
+    duo:         { label: '이중 타원',
+                   sizeLabel: ['타원1 가로', '타원1 세로'],
+                   // measured against the main ellipse, so parking the satellite
+                   // under the tail does not inflate it
+                   tail: { fromScale: true },
+                   params: [
+                     { key: 'w2',  label: '타원2 가로', min: 40, max: 1200, step: 10, def: 300, unit: ' px' },
+                     { key: 'h2',  label: '타원2 세로', min: 40, max: 900, step: 10, def: 180, unit: ' px' },
+                     { key: 'pos', label: '타원2 위치', min: 0, max: 359, def: 45, unit: '°' },
+                     { key: 'gap', label: '타원2 거리', min: 0, max: 400, step: 5, def: 60,
+                       unit: ' px', cap: function () { return duoReach; } }
+                   ],
+                   build: function (b) { return duoKnots(b, paramsOf('duo')); } },
     rect:        { label: '사각형',      build: function (b) { return rectKnots(b.x0, b.y0, b.x1, b.y1); } },
     roundedRect: { label: '둥근사각형',  build: function (b) { return roundedRectKnots(b.x0, b.y0, b.x1, b.y1, Math.min(b.w, b.h) * 0.18); } },
     pill:        { label: '알약형',      build: function (b) { return roundedRectKnots(b.x0, b.y0, b.x1, b.y1, b.h / 2); } },
@@ -1278,13 +1516,16 @@
 
   var state = { shape: 'ellipse', tail: 'bottom-left', fill: '#ffffff',
                 stroke: '#000000', w: 560, h: 320, sw: 3, pad: 40,
-                counts: {}, varies: {}, heights: {}, seed: (Math.random() * 0x7fffffff) | 0 };
+                counts: {}, varies: {}, heights: {}, params: {},
+                seed: (Math.random() * 0x7fffffff) | 0 };
 
   // each shape remembers its own settings, so switching back and forth keeps them
   Object.keys(SHAPES).forEach(function (k) {
     if (SHAPES[k].count) state.counts[k] = SHAPES[k].count.def;
     if (SHAPES[k].vary) state.varies[k] = SHAPES[k].vary.def;
     if (SHAPES[k].height) state.heights[k] = SHAPES[k].height.def;
+    state.params[k] = {};
+    (SHAPES[k].params || []).forEach(function (p) { state.params[k][p.key] = p.def; });
   });
   var current = null;   // { subpaths, dashed, width, height }
 
@@ -1306,8 +1547,83 @@
   var meta = document.getElementById('meta');
   var status = document.getElementById('status');
 
+  // ── sliders a shape declared for itself ──────────────────
+  // Count, height and deviation each have a hand-written field above because
+  // several shapes share them. Anything only one shape asks for is generated
+  // from its `params` list instead, rather than another block apiece. Rows are
+  // built once and then shown or hidden, so a drag is never interrupted by the
+  // row being rebuilt underneath it.
+  var paramRows = {};
+
+  function buildParams(key) {
+    var box = document.getElementById('extra-opts');
+    paramRows[key] = (SHAPES[key].params || []).map(function (cfg) {
+      var id = 'p-' + key + '-' + cfg.key;
+      var row = document.createElement('div');
+      row.className = 'field';
+      var label = document.createElement('label');
+      label.setAttribute('for', id);
+      var val = document.createElement('span');
+      val.className = 'val';
+      val.textContent = cfg.def;
+      label.appendChild(document.createTextNode(cfg.label + ' '));
+      label.appendChild(val);
+      if (cfg.unit) label.appendChild(document.createTextNode(cfg.unit));
+      var input = document.createElement('input');
+      input.type = 'range';
+      input.id = id;
+      input.min = cfg.min; input.max = cfg.max; input.step = cfg.step || 1;
+      input.value = cfg.def;
+      input.addEventListener('input', function () {
+        state.params[key][cfg.key] = Number(input.value);
+        val.textContent = input.value;
+        render();
+      });
+      row.appendChild(label);
+      row.appendChild(input);
+      box.appendChild(row);
+      return { cfg: cfg, input: input, val: val, row: row };
+    });
+    return paramRows[key];
+  }
+
+  // A param whose ceiling only falls out of building the shape gets it applied
+  // here, after the build. The value itself is already clamped by the builder,
+  // so this is the slider catching up with what it was given, not a second
+  // opinion on it.
+  function capParams(key) {
+    (paramRows[key] || []).forEach(function (r) {
+      if (!r.cfg.cap) return;
+      var top = Math.max(r.cfg.min, Math.min(r.cfg.max, Math.floor(r.cfg.cap())));
+      r.input.max = top;
+      if (state.params[key][r.cfg.key] > top) state.params[key][r.cfg.key] = top;
+      r.input.value = state.params[key][r.cfg.key];
+      r.val.textContent = r.input.value;
+    });
+  }
+
+  function showParams(key) {
+    Object.keys(SHAPES).forEach(function (k) {
+      if (!(SHAPES[k].params || []).length) return;
+      var rows = paramRows[k] || buildParams(k);
+      rows.forEach(function (r) {
+        r.row.hidden = k !== key;
+        if (k === key) {
+          r.input.value = state.params[k][r.cfg.key];
+          r.val.textContent = r.input.value;
+        }
+      });
+    });
+  }
+
   function render() {
     var shape = SHAPES[state.shape], cfg = shape.count;
+    // For most shapes these two are the box the outline fills, so "가로/세로"
+    // says it. Where the box is one named part of the shape rather than the
+    // whole of it, the shape renames them to say which part.
+    var size = shape.sizeLabel || ['가로', '세로'];
+    document.getElementById('w-label').textContent = size[0];
+    document.getElementById('h-label').textContent = size[1];
     document.getElementById('cloud-opts').hidden = !cfg;
     if (cfg) {
       var input = document.getElementById('bumps');
@@ -1347,9 +1663,11 @@
       document.getElementById('varyv').textContent = vin.value;
       document.getElementById('vary-label').textContent = vcfg.label;
     }
+    showParams(state.shape);
     // reseeding only means anything where the shape is randomised
     document.getElementById('stage-bar').hidden = !shape.seeded;
     current = compose();
+    capParams(state.shape);
     canvas.width = current.width;
     canvas.height = current.height;
     var ctx = canvas.getContext('2d');
