@@ -665,40 +665,56 @@
     ];
   }
 
-  // ── two ellipses fused into one outline ─────────────────
+  // ── two outlines fused into one ─────────────────────────
   // Overlapping subpaths would look right filled and wrong stroked: Photoshop
-  // fills their union, but the stroke follows every subpath, so both ellipses
+  // fills their union, but the stroke follows every subpath, so both shapes
   // would keep their buried halves as lines across the middle. The outline has
   // to be one path with those halves gone.
+  //
+  // Nothing below knows what shape it is walking. An outline is a closed run of
+  // knots plus a test for being inside it, and the parameter is simply "segment
+  // index plus how far along", which wraps. That is enough to find where two of
+  // them cross and to cut the pieces that survive, so an ellipse and a pill are
+  // the same problem.
 
-  function ellipsePt(e, t) { return [e.cx + e.rx * Math.cos(t), e.cy + e.ry * Math.sin(t)]; }
-  // dP/dt, which is what the arc-to-cubic handle length scales
-  function ellipseVel(e, t) { return [-e.rx * Math.sin(t), e.ry * Math.cos(t)]; }
-  // below 1 inside, 1 on the outline, above 1 outside
-  function ellipseAt(e, x, y) {
-    var a = (x - e.cx) / e.rx, b = (y - e.cy) / e.ry;
-    return a * a + b * b;
-  }
-  function ellipseParam(e, x, y) {
-    return Math.atan2((y - e.cy) / e.ry, (x - e.cx) / e.rx);
+  function outlineOf(knots, inside) {
+    var segs = knotsToSegments(knots);
+    function mark(s) {
+      var i = Math.floor(s) % segs.length;
+      if (i < 0) i += segs.length;
+      return { seg: i, t: Math.min(1 - 1e-9, Math.max(0, s - Math.floor(s))) };
+    }
+    return {
+      P: segs.length,
+      inside: inside,
+      at: function (s) { var m = mark(s); return pointAt(segs[m.seg], m.t); },
+      cut: function (s0, s1) {
+        var run = walk(segs, mark(s0), mark(s1));
+        if (!run.length) return [];
+        var k = segmentsToKnots(run), last = run[run.length - 1];
+        // segmentsToKnots leaves the far end off, since a closed path comes back
+        // to it; an open run has to carry it.
+        k.push({ x: last[6], y: last[7], ix: last[4], iy: last[5],
+                 ox: last[6], oy: last[7], linked: false });
+        return k;
+      }
+    };
   }
 
-  // Where the outline of `a` cuts through `b`, as parameters on `a`. Two
-  // ellipses that genuinely overlap cross exactly twice; apart, or one swallowed
-  // by the other, gives none, and the caller has to fall back. No closed form
-  // for this, so: sweep for sign changes, then bisect each one.
-  function ellipseCrossings(a, b) {
+  // Where the outline of `a` crosses into `b`. Sweep for the changes, then
+  // bisect each: there is no closed form once the outlines are cubics.
+  function outlineCrossings(a, b) {
     var N = 720, hits = [];
-    var p0 = ellipsePt(a, 0);
-    var prev = ellipseAt(b, p0[0], p0[1]) < 1;
+    var p = a.at(0), prev = b.inside(p[0], p[1]);
     for (var i = 1; i <= N; i++) {
-      var t = (i / N) * TAU, p = ellipsePt(a, t);
-      var cur = ellipseAt(b, p[0], p[1]) < 1;
+      var s = (i / N) * a.P;
+      p = a.at(s);
+      var cur = b.inside(p[0], p[1]);
       if (cur !== prev) {
-        var lo = ((i - 1) / N) * TAU, hi = t;
-        for (var k = 0; k < 52; k++) {
-          var mid = (lo + hi) / 2, pm = ellipsePt(a, mid);
-          if ((ellipseAt(b, pm[0], pm[1]) < 1) === prev) lo = mid; else hi = mid;
+        var lo = ((i - 1) / N) * a.P, hi = s;
+        for (var k = 0; k < 46; k++) {
+          var m = (lo + hi) / 2, pm = a.at(m);
+          if (b.inside(pm[0], pm[1]) === prev) lo = m; else hi = m;
         }
         hits.push((lo + hi) / 2);
         prev = cur;
@@ -707,52 +723,38 @@
     return hits;
   }
 
-  // The arc of `e` from t0 to t1 as cubics, cut into quarter turns or less.
-  // (4/3)tan(d/4) times the parametric velocity is the standard handle for an
-  // arc of d radians - exact on a circle, and an ellipse is only a stretched
-  // circle, so the same numbers carry over.
-  function ellipseArcKnots(e, t0, t1) {
-    var span = t1 - t0;
-    var n = Math.max(1, Math.ceil(Math.abs(span) / (Math.PI / 2)));
-    var d = span / n, k = (4 / 3) * Math.tan(d / 4);
-    var out = [];
-    for (var i = 0; i <= n; i++) {
-      var t = t0 + d * i, p = ellipsePt(e, t), v = ellipseVel(e, t);
-      out.push({ x: p[0], y: p[1],
-                 ix: p[0] - v[0] * k, iy: p[1] - v[1] * k,
-                 ox: p[0] + v[0] * k, oy: p[1] + v[1] * k, linked: true });
+  function unionOutlines(A, B) {
+    var ha = outlineCrossings(A, B);
+    if (ha.length !== 2) return null;
+
+    // Of the two runs between the crossings, the outline keeps the one outside
+    // the other shape. Both runs are then walked forwards: on a union of two
+    // convex shapes the boundary turns the same way throughout, so one direction
+    // serves for both and the winding stays consistent.
+    var m = A.at((ha[0] + ha[1]) / 2);
+    var a0, a1;
+    if (!B.inside(m[0], m[1])) { a0 = ha[0]; a1 = ha[1]; }
+    else { a0 = ha[1]; a1 = ha[0] + A.P; }
+
+    var hb = outlineCrossings(B, A);
+    if (hb.length !== 2) return null;
+    var pa = A.at(a0), pb = A.at(a1);
+    function nearest(pt) {
+      var q0 = B.at(hb[0]), q1 = B.at(hb[1]);
+      return Math.hypot(q0[0] - pt[0], q0[1] - pt[1]) <=
+             Math.hypot(q1[0] - pt[0], q1[1] - pt[1]) ? 0 : 1;
     }
-    return out;
-  }
+    var i0 = nearest(pb), i1 = nearest(pa);
+    if (i0 === i1) return null;              // both ends matched the same crossing
+    var b0 = hb[i0], b1 = hb[i1];
+    while (b1 <= b0) b1 += B.P;
 
-  function unionKnots(e1, e2) {
-    var hits = ellipseCrossings(e1, e2);
-    if (hits.length !== 2) {
-      // not fused at all: draw whichever one contains the other, or the larger
-      var big = e1.rx * e1.ry >= e2.rx * e2.ry ? e1 : e2;
-      return ellipseKnots(big.cx, big.cy, big.rx, big.ry);
-    }
-
-    // Of the two arcs between the crossings, the outline keeps the one outside
-    // the other ellipse. Both arcs are then walked with t increasing: on a union
-    // of two convex shapes the boundary turns the same way throughout, so that
-    // one direction serves for both and the winding stays consistent.
-    var mid = ellipsePt(e1, (hits[0] + hits[1]) / 2);
-    var a, b;
-    if (ellipseAt(e2, mid[0], mid[1]) > 1) { a = hits[0]; b = hits[1]; }
-    else { a = hits[1]; b = hits[0] + TAU; }
-
-    var pa = ellipsePt(e1, a), pb = ellipsePt(e1, b);
-    var vb = ellipseParam(e2, pb[0], pb[1]);
-    var va = ellipseParam(e2, pa[0], pa[1]);
-    while (va <= vb) va += TAU;
-
-    var arc1 = ellipseArcKnots(e1, a, b);
-    var arc2 = ellipseArcKnots(e2, vb, va);
-    var out = arc1.slice(), last = out.length - 1;
+    var arc1 = A.cut(a0, a1), arc2 = B.cut(b0, b1);
+    if (arc1.length < 2 || arc2.length < 2) return null;
 
     // The two crossings are corners, not smooth points: each keeps the handle of
-    // the arc arriving and takes the handle of the arc leaving.
+    // the run arriving and takes the handle of the run leaving.
+    var out = arc1.slice(), last = out.length - 1;
     out[last] = { x: out[last].x, y: out[last].y,
                   ix: out[last].ix, iy: out[last].iy,
                   ox: arc2[0].ox, oy: arc2[0].oy, linked: false };
@@ -760,84 +762,201 @@
     var back = arc2[arc2.length - 1];
     out[0] = { x: out[0].x, y: out[0].y, ix: back.ix, iy: back.iy,
                ox: out[0].ox, oy: out[0].oy, linked: false };
+    return dedupe(out);
+  }
+
+  // Drop anchors that sit on top of one another. A pill's outline arrives with a
+  // few already - built as a rounded rectangle whose radius eats the whole side,
+  // its straight runs at the caps have no length - and cutting two outlines at a
+  // crossing can leave another where the cut lands on a knot. They draw the same
+  // either way, but they are anchors to trip over in Photoshop.
+  function dedupe(knots) {
+    var out = [];
+    for (var i = 0; i < knots.length; i++) {
+      var k = knots[i], prev = out[out.length - 1];
+      if (prev && Math.hypot(k.x - prev.x, k.y - prev.y) < 1e-6) {
+        prev.ox = k.ox; prev.oy = k.oy;      // keep the way out of the pair
+        prev.linked = false;
+        continue;
+      }
+      out.push({ x: k.x, y: k.y, ix: k.ix, iy: k.iy, ox: k.ox, oy: k.oy, linked: k.linked });
+    }
+    var first = out[0], lastK = out[out.length - 1];
+    if (out.length > 1 && Math.hypot(first.x - lastK.x, first.y - lastK.y) < 1e-6) {
+      first.ix = lastK.ix; first.iy = lastK.iy;
+      first.linked = false;
+      out.pop();
+    }
     return out;
   }
 
-  // How far the satellite can be pushed out along the normal before it comes
-  // away. There is no single outline past that point, so the slider spends a
-  // share of this rather than a length of its own.
+  // ── the shapes the satellite trick is built from ────────
+
+  // below 1 inside, 1 on the outline, above 1 outside
+  function ellipseAt(e, x, y) {
+    var a = (x - e.cx) / e.rx, b = (y - e.cy) / e.ry;
+    return a * a + b * b;
+  }
+
+  function ellipseShape(cx, cy, rx, ry) {
+    var e = { cx: cx, cy: cy, rx: rx, ry: ry };
+    return { knots: ellipseKnots(cx, cy, rx, ry),
+             area: rx * ry,
+             inside: function (x, y) { return ellipseAt(e, x, y) < 1; },
+             // the ellipse's normal, not the ray from its centre: on a flat
+             // bubble those point noticeably different ways, and it is the
+             // normal that reads as "straight out from here"
+             normal: function (x, y) {
+               var gx = (x - cx) / (rx * rx), gy = (y - cy) / (ry * ry);
+               var gl = Math.hypot(gx, gy) || 1;
+               return [gx / gl, gy / gl];
+             } };
+  }
+
+  // A pill is everything within r of its core segment, so both its outline and
+  // the test for being inside it come from that one segment.
+  function pillShape(cx, cy, w, h) {
+    var r = Math.min(w, h) / 2, wide = w >= h;
+    var half = Math.max(w, h) / 2 - r;
+    var ax = cx - (wide ? half : 0), ay = cy - (wide ? 0 : half);
+    var bx = cx + (wide ? half : 0), by = cy + (wide ? 0 : half);
+    function foot(x, y) {
+      var dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+      var t = L2 ? ((x - ax) * dx + (y - ay) * dy) / L2 : 0;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      return [ax + dx * t, ay + dy * t];
+    }
+    return {
+      knots: roundedRectKnots(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2, r),
+      area: w * h,
+      inside: function (x, y) {
+        var f = foot(x, y);
+        return Math.hypot(x - f[0], y - f[1]) < r;
+      },
+      // straight out from the core, which along a pill's flanks is square to the
+      // edge rather than fanning out of the centre
+      normal: function (x, y) {
+        var f = foot(x, y);
+        var nx = x - f[0], ny = y - f[1], nl = Math.hypot(nx, ny) || 1;
+        return [nx / nl, ny / nl];
+      }
+    };
+  }
+
+  function fuse(s1, s2) {
+    var out = unionOutlines(outlineOf(s1.knots, s1.inside),
+                            outlineOf(s2.knots, s2.inside));
+    // not fused at all: draw whichever one swallowed the other, or the larger
+    return out || (s1.area >= s2.area ? s1.knots : s2.knots);
+  }
+
+  // ── satellite placement, shared by both duo shapes ──────
+
   // The span of distances over which the satellite reads as a second lobe:
-  // closer than the near end it has swallowed the main ellipse whole, further
-  // than the far end it has come away. The slider spends this rather than a
-  // length of its own, so neither end can be overshot at any size.
+  // closer than the near end it has swallowed the main shape, further than the
+  // far end it has come away. The slider spends this rather than a length of its
+  // own, so neither end can be overshot at any size.
   //
   // The near end is only above nought when the satellite is the bigger of the
   // two - nothing crosses the outline of something it contains - which is also
   // why this sweeps for the band before bisecting inside it. Bisecting straight
   // from nought would take a distance with no crossings as its floor and could
   // hand back one where the two are apart.
-  function reachBand(e1, srx, sry, px, py, nx, ny) {
-    var cap = Math.max(e1.rx, e1.ry) + Math.max(srx, sry);
-    function fused(d) {
-      return ellipseCrossings(e1, { cx: px + nx * d, cy: py + ny * d,
-                                    rx: srx, ry: sry }).length === 2;
-    }
-    function edge(inside, outside) {         // bisect towards the outside one
+  function reachBand(fusedAt, cap) {
+    function edge(inside, outside) {
       for (var k = 0; k < 26; k++) {
         var mid = (inside + outside) / 2;
-        if (fused(mid)) inside = mid; else outside = mid;
+        if (fusedAt(mid)) inside = mid; else outside = mid;
       }
       return inside;
     }
     var N = 48, step = cap / N, first = -1, last = -1;
     for (var i = 0; i <= N; i++) {
-      if (fused(i * step)) { if (first < 0) first = i; last = i; }
+      if (fusedAt(i * step)) { if (first < 0) first = i; last = i; }
       else if (first >= 0) break;
     }
-    if (first < 0) return [0, 0];            // never crosses at any distance
+    if (first < 0) return [0, 0];
     return [first === 0 ? 0 : edge(first * step, (first - 1) * step),
             edge(last * step, Math.min(cap, (last + 1) * step))];
   }
 
-  // Stop just short of the tangent, where the two crossings meet and the join
-  // pinches to nothing. At the limit itself there is no lens left to draw.
+  // Stop short of either end of the band, where the crossings meet and the join
+  // has no width. Only the far end is always a tangency: the near end is one
+  // when the satellite would otherwise swallow the main shape, but where it is
+  // simply nought - the satellite centred on the outline, the usual case -
+  // there is nothing degenerate about it and the slider keeps its full reach.
   var DUO_HOLD = 0.94;
 
   // furthest the satellite can be set from the last build, for the slider's cap
   var duoReach = 0;
 
-  function duoKnots(b, p) {
-    var e1 = { cx: b.cx, cy: b.cy, rx: b.rx, ry: b.ry };
-    // 0 at the top and running clockwise, which is what the parametrisation
-    // already does once y points down
-    var t = (p.pos / 180) * Math.PI - Math.PI / 2;
-    var base = ellipsePt(e1, t);
-    // the ellipse's normal, not the ray from its centre: on a flat bubble those
-    // point noticeably different ways, and it is the normal that reads as
-    // "straight out from here"
-    var gx = (base[0] - e1.cx) / (e1.rx * e1.rx);
-    var gy = (base[1] - e1.cy) / (e1.ry * e1.ry);
-    var gl = Math.hypot(gx, gy) || 1;
-    var nx = gx / gl, ny = gy / gl;
-    var srx = p.w2 / 2, sry = p.h2 / 2;
-    // Stop short of either end of the band, where the crossings meet and the
-    // join has no width. Only the far end is always a tangency: the near end is
-    // one when the satellite would otherwise swallow the main ellipse, but where
-    // it is simply nought - the satellite centred on the outline, the usual case
-    // - there is nothing degenerate about it and the slider keeps its full reach.
-    var band = reachBand(e1, srx, sry, base[0], base[1], nx, ny);
+  // 0 at the top and running clockwise, which is what the parametrisation
+  // already does once y points down
+  function duoAngle(deg) { return (deg / 180) * Math.PI - Math.PI / 2; }
+
+  // Where a ray out of the centre leaves the shape. Bisection rather than
+  // algebra, so a pill and an ellipse are handled the same way.
+  function outwardHit(shape, cx, cy, angle, cap) {
+    var dx = Math.cos(angle), dy = Math.sin(angle), lo = 0, hi = cap;
+    for (var i = 0; i < 44; i++) {
+      var m = (lo + hi) / 2;
+      if (shape.inside(cx + dx * m, cy + dy * m)) lo = m; else hi = m;
+    }
+    return [cx + dx * lo, cy + dy * lo];
+  }
+
+  // Sits the satellite a set distance out from the main shape's outline and
+  // hands back the fused pair. `make` turns a centre into the satellite.
+  function duoBuild(main, base, nx, ny, gap, make) {
+    var cap = 0;
+    for (var i = 0; i < main.knots.length; i++) {
+      cap = Math.max(cap, Math.hypot(main.knots[i].x - base[0],
+                                     main.knots[i].y - base[1]));
+    }
+    var sample = make(base[0], base[1]);
+    for (var j = 0; j < sample.knots.length; j++) {
+      cap = Math.max(cap, 2 * Math.hypot(sample.knots[j].x - base[0],
+                                         sample.knots[j].y - base[1]));
+    }
+    cap += 1;
+    var mainLine = outlineOf(main.knots, main.inside);
+    function fusedAt(d) {
+      var sat = make(base[0] + nx * d, base[1] + ny * d);
+      return outlineCrossings(mainLine, outlineOf(sat.knots, sat.inside)).length === 2;
+    }
+    var band = reachBand(fusedAt, cap);
     var span = band[1] - band[0];
     var near = band[0] > 0 ? band[0] + span * (1 - DUO_HOLD) : 0;
     var far = Math.max(near, band[0] + span * DUO_HOLD);
     // The slider is a gap in pixels, measured from the outline of the main
-    // ellipse, so resizing that ellipse carries the satellite along at the same
+    // shape, so resizing that shape carries the satellite along at the same
     // remove instead of rescaling the gap under it. What resizing does change is
     // how far it CAN go, so the reachable end is published for the slider to cap
     // itself with, the way the spike height caps itself against the spike count.
     duoReach = far;
-    var d = Math.min(Math.max(p.gap, near), far);
-    return unionKnots(e1, { cx: base[0] + nx * d, cy: base[1] + ny * d, rx: srx, ry: sry });
+    var d = Math.min(Math.max(gap, near), far);
+    return fuse(main, make(base[0] + nx * d, base[1] + ny * d));
   }
+
+  function duoKnots(b, p) {
+    var main = ellipseShape(b.cx, b.cy, b.rx, b.ry);
+    var t = duoAngle(p.pos);
+    var base = [b.cx + b.rx * Math.cos(t), b.cy + b.ry * Math.sin(t)];
+    var n = main.normal(base[0], base[1]);
+    return duoBuild(main, base, n[0], n[1], p.gap, function (x, y) {
+      return ellipseShape(x, y, p.w2 / 2, p.h2 / 2);
+    });
+  }
+
+  function duoPillKnots(b, p) {
+    var main = pillShape(b.cx, b.cy, b.w, b.h);
+    var base = outwardHit(main, b.cx, b.cy, duoAngle(p.pos), Math.hypot(b.rx, b.ry) + 1);
+    var n = main.normal(base[0], base[1]);
+    return duoBuild(main, base, n[0], n[1], p.gap, function (x, y) {
+      return pillShape(x, y, p.w2, p.h2);
+    });
+  }
+
 
   function rectKnots(x0, y0, x1, y1) {
     return [sharp(x0, y0), sharp(x1, y0), sharp(x1, y1), sharp(x0, y1)];
@@ -1404,6 +1523,17 @@
                        unit: ' px', cap: function () { return duoReach; } }
                    ],
                    build: function (b) { return duoKnots(b, paramsOf('duo')); } },
+    duopill:     { label: '이중 알약',
+                   sizeLabel: ['알약1 가로', '알약1 세로'],
+                   tail: { fromScale: true },
+                   params: [
+                     { key: 'w2',  label: '알약2 가로', min: 40, max: 1200, step: 10, def: 300, unit: ' px' },
+                     { key: 'h2',  label: '알약2 세로', min: 40, max: 900, step: 10, def: 180, unit: ' px' },
+                     { key: 'pos', label: '알약2 위치', min: 0, max: 359, def: 45, unit: '°' },
+                     { key: 'gap', label: '알약2 거리', min: 0, max: 400, step: 5, def: 60,
+                       unit: ' px', cap: function () { return duoReach; } }
+                   ],
+                   build: function (b) { return duoPillKnots(b, paramsOf('duopill')); } },
     rect:        { label: '사각형',      build: function (b) { return rectKnots(b.x0, b.y0, b.x1, b.y1); } },
     roundedRect: { label: '둥근사각형',  build: function (b) { return roundedRectKnots(b.x0, b.y0, b.x1, b.y1, Math.min(b.w, b.h) * 0.18); } },
     pill:        { label: '알약형',      build: function (b) { return roundedRectKnots(b.x0, b.y0, b.x1, b.y1, b.h / 2); } },
