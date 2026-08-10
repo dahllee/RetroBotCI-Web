@@ -71,11 +71,14 @@
       gap: 10px;
       color: #7eb8b0;
       font-size: 16px;
+      /* The section centres its children, so the list sits in the middle as a
+         block; this ranges the lines against each other inside it rather than
+         leaving them centred and ragged on both sides. */
+      text-align: left;
     }
-    .info-list li::before {
-      content: "— ";
-      color: #555;
-    }
+    /* no colour of its own, so the bullet takes the list's; the gap is a margin
+       rather than a space in the content, which a space would not hold open */
+    .info-list li::before { content: "•"; margin-right: 10px; }
 
     /* ── Video ── */
     .video-section {
