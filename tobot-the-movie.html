@@ -121,9 +121,11 @@
       flex-direction: column;
       gap: 12px;
     }
+    /* Square corners throughout. A 4px radius reads as a rounded box against a
+       light corner and as nothing at all against a dark one, so with these
+       stills it looked applied to some and not others. */
     .gallery img.wide {
       width: 100%;
-      border-radius: 4px;
       object-fit: cover;
     }
     .gallery .pair {
@@ -133,9 +135,14 @@
     }
     .gallery .pair img {
       width: 100%;
-      border-radius: 4px;
       object-fit: cover;
     }
+    /* The stills come in at 1.80 to 1.86, close enough to look like a mistake
+       rather than a choice when their bottoms fail to line up. One ratio for
+       all of them squares the rows off; cover takes the difference off the
+       sides. Posters keep their own ratio - both are 1:1.425, so they already
+       agree. */
+    .gallery .pair.stills img { aspect-ratio: 16 / 9; }
 
     /* ── Footer ── */
     footer {
@@ -189,11 +196,11 @@
     <img src="post-images/1ab44f_c69a0ef65f814ce2b97c09b1bd745600~mv2.webp" alt="Theatrical Poster" loading="lazy">
     <img src="post-images/1ab44f_72268d78fd98489180f63063a82ffaf4~mv2.jpg" alt="Teaser Poster" loading="lazy">
   </div>
-  <div class="pair">
+  <div class="pair stills">
     <img src="post-images/1ab44f_ec60a8d6aaa2400c854e9c622e60ec0f~mv2.png" alt="Film Still" loading="lazy">
     <img src="post-images/1ab44f_5980996a24e74b13a479ffa784a2ead0~mv2.jpg" alt="Film Still" loading="lazy">
   </div>
-  <div class="pair">
+  <div class="pair stills">
     <img src="post-images/1ab44f_2ecb022b870346eb9aa3fda572f0c6df~mv2.png" alt="Film Still" loading="lazy">
     <img src="post-images/1ab44f_441b5ebc5605496d941651ed8d1b4096~mv2.png" alt="Film Still" loading="lazy">
   </div>
