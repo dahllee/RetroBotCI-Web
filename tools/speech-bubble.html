@@ -112,8 +112,22 @@
     }
     .field .val { color: #7eb8b0; font-weight: 500; letter-spacing: 0.04em; }
 
+    /* The picker carries the same card as the panel, so the two read as one set
+       of controls even though one runs across and the other down. */
+    .picker {
+      background: #0d0d0d;
+      border: 1px solid #1e1e1e;
+      border-radius: 6px;
+      padding: 22px 28px;
+      margin-bottom: 24px;
+    }
+    .picker .field { margin-bottom: 16px; }
+
     .chips { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
     .chips.tails { grid-template-columns: repeat(3, 1fr); }
+    /* Sized to their labels and wrapping, rather than sharing out a column */
+    .chips.row { display: flex; flex-wrap: wrap; }
+    .chips.row .chip { padding-left: 15px; padding-right: 15px; }
     .chip {
       padding: 9px 6px;
       border: 1px solid #1e1e1e;
@@ -236,19 +250,23 @@
     <p>말풍선을 벡터 셰이프 레이어가 들어간 PSD로 내려받습니다. 포토샵에서 열면 직접 선택 도구로 앵커 포인트를 그대로 편집할 수 있습니다. 글자는 포토샵에서 직접 넣으세요.</p>
   </div>
 
+  <!-- What the bubble is, laid out across the page: the shape list is long
+       enough that a column of it crowds the sliders out of sight. -->
+  <div class="picker">
+    <div class="field">
+      <label>모양</label>
+      <div class="chips row" id="shapes"></div>
+    </div>
+
+    <div class="field">
+      <label>꼬리 방향</label>
+      <div class="chips row" id="tails"></div>
+    </div>
+  </div>
+
   <div class="studio">
     <!-- ── Controls ── -->
     <div class="panel">
-      <div class="field">
-        <label>모양</label>
-        <div class="chips" id="shapes"></div>
-      </div>
-
-      <div class="field">
-        <label>꼬리 방향</label>
-        <div class="chips tails" id="tails"></div>
-      </div>
-
       <div class="field">
         <div class="colors">
           <div>
