@@ -63,6 +63,14 @@
       font-weight: 400;
       color: #888;
     }
+    /* Logo beside its description rather than above it. */
+    .work-head {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 40px;
+      flex-wrap: wrap;
+    }
     .tobot-logo { height: 180px; width: auto; }
     .info-list {
       list-style: none;
@@ -126,6 +134,17 @@
       object-fit: cover;
     }
 
+    /* 48px leaves the title needing more width than a phone has, so it arrives
+       in more lines than it is written as. */
+    @media (max-width: 640px) {
+      .title-section h1 { font-size: 28px; }
+      .title-section .year { font-size: 21px; }
+      /* A fixed height with max-width clamping the other side squashes the logo
+         once the screen is narrower than the height demands - 596px wide at
+         180px tall against 279px of room. Let the height follow instead. */
+      .tobot-logo { height: auto; }
+    }
+
     /* ── Footer ── */
     footer {
       border-top: 1px solid #1e1e1e;
@@ -156,13 +175,15 @@
 <!-- ── Title ── -->
 <section class="title-section">
   <h1>TOBOT : Daedo's Heroes <span class="year">(2023)</span></h1>
-  <img class="tobot-logo" src="post-images/1ab44f_08d78c6590d740168c0b044d6b29262f~mv2.png" alt="TOBOT: Daedo's Heroes Logo">
-  <ul class="info-list">
-    <li>A TV series animation mainly targeting boys aged 4–7</li>
-    <li>11 minutes × 24 episodes</li>
-    <li>A sequel to <em>TOBOT</em></li>
-    <li>Co-produced by YoungToys and RetroBot CI</li>
-  </ul>
+  <div class="work-head">
+    <img class="tobot-logo" src="post-images/1ab44f_08d78c6590d740168c0b044d6b29262f~mv2.png" alt="TOBOT: Daedo's Heroes Logo">
+    <ul class="info-list">
+      <li>A TV series animation mainly targeting boys aged 4–7</li>
+      <li>11 minutes × 24 episodes</li>
+      <li>A sequel to <em>TOBOT</em></li>
+      <li>Co-produced by YoungToys and RetroBot CI</li>
+    </ul>
+  </div>
 </section>
 
 <!-- ── Video ── -->

@@ -63,14 +63,21 @@
       font-weight: 400;
       color: #888;
     }
+    /* Logo beside its description rather than above it. */
+    .work-head {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 40px;
+      flex-wrap: wrap;
+    }
     /* The image's own size, so it is never resampled. The artwork sits inside
-       31px of clear space at the top of its file and 46px at the bottom, which
-       would otherwise be added to the gaps either side of it; pulling that back
-       makes the gap you set the gap you see. */
+       clear space in its file - 31px above, 46px below, 70 and 72 either side -
+       which would otherwise be added to the gaps around it; pulling all four
+       back makes the gap you set the gap you see. */
     .tobot-logo {
       height: auto; width: auto;
-      margin-top: -31px;
-      margin-bottom: -46px;
+      margin: -31px -72px -46px -70px;
     }
     .info-list {
       list-style: none;
@@ -83,9 +90,6 @@
          block; this ranges the lines against each other inside it rather than
          leaving them centred and ragged on both sides. */
       text-align: left;
-      /* pulls the 36px section gap back to 30px, so the list sits closer to the
-         logo than the logo does to the title */
-      margin-top: -6px;
     }
     /* no colour of its own, so the bullet takes the list's; the gap is a margin
        rather than a space in the content, which a space would not hold open */
@@ -144,6 +148,17 @@
        agree. */
     .gallery .pair.stills img { aspect-ratio: 16 / 9; }
 
+    /* Once the row wraps, the logo is above the text rather than beside it, so
+       the side pull that closed the gap between them now just knocks it off
+       centre. The vertical one still earns its keep. */
+    @media (max-width: 640px) {
+      .tobot-logo { margin-left: 0; margin-right: 0; }
+      /* 48px leaves the subtitle needing twice the width a phone has, so the
+         title arrives in six lines instead of the two it is written as. */
+      .title-section h1 { font-size: 28px; }
+      .title-section .year { font-size: 21px; }
+    }
+
     /* ── Footer ── */
     footer {
       border-top: 1px solid #1e1e1e;
@@ -174,13 +189,15 @@
 <!-- ── Title ── -->
 <section class="title-section">
   <h1>TOBOT The Movie :<br>Attack Of The Robot Force <span class="year">(2017)</span></h1>
-  <img class="tobot-logo" src="post-images/1ab44f_b8621b95dbbc4e439700c08b1820b0a1~mv2.png" alt="TOBOT The Movie Logo">
-  <ul class="info-list">
-    <li>A feature-length theatrical animation for family audiences</li>
-    <li>80 minutes</li>
-    <li>Based on the TV series, <em>TOBOT</em></li>
-    <li>Co-produced by RetroBot and CJ E&amp;M</li>
-  </ul>
+  <div class="work-head">
+    <img class="tobot-logo" src="post-images/1ab44f_b8621b95dbbc4e439700c08b1820b0a1~mv2.png" alt="TOBOT The Movie Logo">
+    <ul class="info-list">
+      <li>A feature-length theatrical animation for family audiences</li>
+      <li>80 minutes</li>
+      <li>Based on the TV series, <em>TOBOT</em></li>
+      <li>Co-produced by RetroBot and CJ E&amp;M</li>
+    </ul>
+  </div>
 </section>
 
 <!-- ── Video ── -->
