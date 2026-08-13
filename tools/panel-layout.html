@@ -1,0 +1,1908 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Panel Layout Generator — RetroBot CI</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+      background: #0a0a0a;
+      color: #f0f0f0;
+      line-height: 1.6;
+    }
+    a { color: inherit; text-decoration: none; }
+    img { display: block; max-width: 100%; }
+
+    /* ── Header ── */
+    header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 48px;
+      height: 64px;
+      background: rgba(10,10,10,0.90);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid #1e1e1e;
+    }
+    nav { display: flex; gap: 32px; align-items: center; }
+    nav a {
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: #888;
+      transition: color 0.2s;
+    }
+    nav a:hover { color: #fff; }
+    .nav-toggle {
+      display: none;
+      flex-direction: column;
+      gap: 5px;
+      background: none; border: none; cursor: pointer; padding: 4px;
+    }
+    .nav-toggle span { display: block; width: 24px; height: 2px; background: #888; transition: all 0.3s; }
+
+    /* ── Shared ── */
+    .section-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: #7eb8b0;
+      margin-bottom: 14px;
+    }
+    .section-title {
+      font-size: clamp(28px, 3vw, 42px);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+    }
+    .btn {
+      display: inline-block;
+      padding: 13px 30px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      transition: all 0.2s;
+      border: none;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .btn-primary { background: #7eb8b0; color: #fff; }
+    .btn-primary:hover { background: #5fa09a; }
+    .btn-ghost { border: 1px solid #ef4e23; color: #fff; background: none; }
+    .btn-ghost:hover { background: rgba(239,78,35,0.12); }
+    .btn:disabled { opacity: 0.35; cursor: default; }
+    .btn:disabled:hover { background: none; }
+    .btn-primary:disabled:hover { background: #7eb8b0; }
+
+    /* ── Layout ── */
+    .page { padding: 112px 48px 64px; }
+    .intro { margin-bottom: 20px; max-width: 720px; }
+    .intro p { font-size: 15px; color: #777; line-height: 1.85; margin-top: 16px; }
+
+    .studio {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 32px;
+      align-items: start;
+    }
+
+    /* ── Controls ── */
+    .panel {
+      background: #0d0d0d;
+      border: 1px solid #1e1e1e;
+      border-radius: 6px;
+      padding: 28px;
+    }
+    .field { margin-bottom: 13px; }
+    .field:last-child { margin-bottom: 0; }
+    .field > label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #666;
+      margin-bottom: 4px;
+    }
+    .field .val { color: #7eb8b0; font-weight: 500; letter-spacing: 0.04em; }
+
+    /* A rule across the control column, naming the group under it. The auto
+       layout controls are a different job from the page metrics above them. */
+    .group {
+      margin: 24px 0 13px;
+      padding-top: 18px;
+      border-top: 1px solid #1e1e1e;
+      font-size: 11px; font-weight: 600; letter-spacing: 0.2em;
+      text-transform: uppercase; color: #7eb8b0;
+    }
+
+    /* The picker carries the same card as the panel, so the two read as one set
+       of controls even though one runs across and the other down. */
+    .picker {
+      background: #0d0d0d;
+      border: 1px solid #1e1e1e;
+      border-radius: 6px;
+      padding: 11px 28px;
+      margin-bottom: 24px;
+    }
+    /* Label beside its buttons rather than over them. A set width on the label
+       lines the two rows of buttons up with each other. */
+    .picker .field {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    /* same weight as the .field:last-child rule above, so it has to say it again
+       here or the last row keeps its gap and the box sits lopsided */
+    .picker .field:last-child { margin-bottom: 0; }
+    .picker .field > label {
+      flex: 0 0 auto;
+      width: 68px;
+      margin-bottom: 0;
+      padding-top: 15px;      /* centres on the first row of buttons, not above it */
+      white-space: nowrap;
+    }
+    .picker .chips { flex: 1 1 auto; min-width: 0; }
+
+    .chips { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+    /* Sized to their labels and wrapping, rather than sharing out a column */
+    .chips.row { display: flex; flex-wrap: wrap; }
+    .chips.row .chip { padding-left: 15px; padding-right: 15px; }
+    .chip {
+      padding: 9px 6px;
+      border: 1px solid #1e1e1e;
+      border-radius: 4px;
+      background: #0a0a0a;
+      color: #888;
+      font-size: 12px;
+      font-family: inherit;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: center;
+    }
+    .chip:hover { border-color: #333; color: #ccc; }
+    .chip[aria-pressed="true"] { border-color: #7eb8b0; color: #fff; background: rgba(126,184,176,0.12); }
+
+    input[type=range] { width: 100%; accent-color: #7eb8b0; display: block; }
+    .row-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+    .hint-sm { font-size: 11px; color: #555; margin-top: 8px; letter-spacing: 0.02em; }
+    /* the drop target lights up only while a file is over it */
+    .canvas-wrap.dropping { outline: 2px dashed #7eb8b0; outline-offset: -6px; }
+    .colors { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .colors label {
+      display: block;
+      font-size: 11px; font-weight: 600; letter-spacing: 0.12em;
+      text-transform: uppercase; color: #666; margin-bottom: 8px;
+    }
+    input[type=color] {
+      width: 100%; height: 38px; padding: 0;
+      border: 1px solid #1e1e1e; border-radius: 4px;
+      background: #0a0a0a; cursor: pointer;
+    }
+
+    /* ── Preview ── */
+    .stage {
+      background: #070707;
+      border: 1px solid #1e1e1e;
+      border-radius: 6px;
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      min-height: 420px;
+    }
+    .stage-bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .stage-bar .spacer { flex: 1 1 auto; }
+    .btn-sm { padding: 9px 20px; font-size: 12px; }
+    .stage-bar .hint { font-size: 12px; color: #555; letter-spacing: 0.03em; }
+    .stage-bar .chips.row { flex: 0 0 auto; gap: 6px; }
+    .stage-bar > label {
+      font-size: 11px; font-weight: 600; letter-spacing: 0.12em;
+      text-transform: uppercase; color: #666;
+    }
+    .canvas-wrap {
+      flex: 1;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 4px;
+      /* light checkerboard: shows transparency, and a black outline reads on it */
+      background-color: #e9e9e9;
+      background-image:
+        linear-gradient(45deg, #cfcfcf 25%, transparent 25%, transparent 75%, #cfcfcf 75%),
+        linear-gradient(45deg, #cfcfcf 25%, transparent 25%, transparent 75%, #cfcfcf 75%);
+      background-size: 20px 20px;
+      background-position: 0 0, 10px 10px;
+      padding: 20px;
+      overflow: auto;
+    }
+    #preview { max-width: 100%; max-height: 68vh; display: block; touch-action: none; }
+    .meta { font-size: 12px; color: #555; letter-spacing: 0.04em; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .note {
+      font-size: 12px; color: #666; line-height: 1.8;
+      border-left: 2px solid #1e1e1e; padding-left: 14px;
+    }
+    .note strong { color: #7eb8b0; font-weight: 600; }
+    .note + .note { margin-top: 10px; }
+    #status { font-size: 12px; color: #7eb8b0; min-height: 18px; letter-spacing: 0.04em; }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid #1e1e1e;
+      padding: 48px;
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+    }
+    footer img { height: 40px; width: auto; }
+    footer p { font-size: 12px; color: #444; letter-spacing: 0.03em; }
+
+    /* ── Responsive ── */
+    @media (max-width: 980px) {
+      .studio { grid-template-columns: 1fr; }
+    }
+    /* On a narrow screen the label costs more room than it is worth beside the
+       buttons - it squeezes them into half again as many rows - so put it back
+       over them. */
+    @media (max-width: 640px) {
+      .picker .field { display: block; }
+      .picker .field > label { width: auto; padding-top: 0; margin-bottom: 4px; }
+    }
+    @media (max-width: 820px) {
+      header { padding: 0 24px; }
+      .nav-toggle { display: flex; }
+      nav {
+        display: none;
+        position: absolute; top: 64px; left: 0; right: 0;
+        flex-direction: column;
+        background: rgba(10,10,10,0.97);
+        padding: 24px 32px; gap: 20px;
+        border-bottom: 1px solid #1e1e1e;
+      }
+      nav.open { display: flex; }
+      .page { padding: 96px 24px 48px; }
+      footer { padding: 24px; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <button class="nav-toggle" aria-label="Toggle menu">
+    <span></span><span></span><span></span>
+  </button>
+  <nav id="main-nav">
+    <a href="../index.html">Home</a>
+    <a href="../index.html#works">Works</a>
+    <a href="../index.html#services">Services</a>
+    <a href="../index.html#about">About</a>
+    <a href="../news.html">News</a>
+    <a href="../index.html#contact">Contact</a>
+  </nav>
+</header>
+
+<div class="page">
+  <div class="intro">
+    <p class="section-label">Tool</p>
+    <h1 class="section-title">칸 나누기</h1>
+    <p>만화 페이지의 칸 배치를 짜서 벡터 셰이프 레이어가 든 PSD로 내려받습니다. 칸마다 레이어 하나씩, 읽는 순서대로 이름이 붙습니다. 포토샵에서 열면 직접 선택 도구로 모서리를 그대로 옮길 수 있습니다.</p>
+  </div>
+
+  <!-- Both starting points sit across the top: pick a layout, or pick a page.
+       The canvas below is where either one gets taken apart by hand. -->
+  <div class="picker">
+    <div class="field">
+      <label>배치</label>
+      <div class="chips row" id="presets"></div>
+    </div>
+
+    <div class="field">
+      <label>판형</label>
+      <div class="chips row" id="pages"></div>
+    </div>
+  </div>
+
+  <div class="studio">
+    <!-- ── Controls ── -->
+    <div class="panel">
+      <div class="field">
+        <div class="colors">
+          <div>
+            <label for="fill">채움색</label>
+            <input type="color" id="fill" value="#ffffff">
+          </div>
+          <div>
+            <label for="stroke">테두리색</label>
+            <input type="color" id="stroke" value="#000000">
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="w">가로 <span class="val" id="wv">1240</span> px</label>
+        <!-- step 1, because a coarser one puts half the 판형 presets between two
+             notches and the slider snaps them off the moment it is touched -->
+        <input type="range" id="w" min="300" max="3600" step="1" value="1240">
+      </div>
+      <div class="field">
+        <label for="h">세로 <span class="val" id="hv">1754</span> px</label>
+        <input type="range" id="h" min="300" max="4800" step="1" value="1754">
+      </div>
+      <div class="field">
+        <label for="margin">바깥 여백 <span class="val" id="marginv">70</span> px</label>
+        <input type="range" id="margin" min="0" max="300" step="5" value="70">
+      </div>
+      <div class="field">
+        <label for="gutter">칸 간격 <span class="val" id="gutterv">28</span> px</label>
+        <input type="range" id="gutter" min="0" max="160" step="2" value="28">
+      </div>
+      <div class="field">
+        <label for="sw">테두리 두께 <span class="val" id="swv">5</span> px</label>
+        <input type="range" id="sw" min="0" max="40" step="1" value="5">
+      </div>
+      <div class="field">
+        <label for="radius">모서리 둥글기 <span class="val" id="radiusv">0</span> px</label>
+        <input type="range" id="radius" min="0" max="80" step="1" value="0">
+      </div>
+
+      <p class="group">자동 배치</p>
+      <div class="field">
+        <label for="count">칸 개수 <span class="val" id="countv">6</span></label>
+        <input type="range" id="count" min="2" max="16" step="1" value="6">
+      </div>
+      <div class="field">
+        <label for="dyn">역동성 <span class="val" id="dynv">40</span>%</label>
+        <input type="range" id="dyn" min="0" max="100" step="1" value="40">
+      </div>
+      <div class="field">
+        <button class="btn btn-ghost btn-sm" id="reseed">새 배치</button>
+      </div>
+
+      <!-- A thumbnail to lay the panels over. Lives under the page on screen and
+           nowhere else - none of the exports ever see it. -->
+      <p class="group">참고 이미지</p>
+      <div class="field">
+        <input type="file" id="ref-file" accept="image/*" hidden>
+        <div class="row-btns">
+          <button class="btn btn-ghost btn-sm" id="ref-pick">불러오기</button>
+          <button class="btn btn-ghost btn-sm" id="ref-clear" hidden>지우기</button>
+        </div>
+        <p class="hint-sm">캔버스에 파일을 끌어다 놓아도 됩니다</p>
+      </div>
+      <div id="ref-opts" hidden>
+        <div class="field">
+          <label>맞추기</label>
+          <div class="chips row" id="ref-fits"></div>
+        </div>
+        <div class="field">
+          <label for="refop">불투명도 <span class="val" id="refopv">50</span>%</label>
+          <input type="range" id="refop" min="5" max="100" step="5" value="50">
+        </div>
+        <div class="field">
+          <button class="btn btn-ghost btn-sm" id="ref-size">이미지 크기로 페이지 맞추기</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Preview ── -->
+    <div class="stage">
+      <!-- the tools that act on the canvas live next to it -->
+      <div class="stage-bar">
+        <label>쪼개기</label>
+        <div class="chips row" id="dirs"></div>
+        <label>읽는 순서</label>
+        <div class="chips row" id="orders"></div>
+        <!-- Off by default: on a plain grid the order is obvious, and a badge on
+             every panel fights with the layout you are trying to judge. It earns
+             its place on irregular pages, and as the only visible answer to the
+             reading-order buttons beside it. -->
+        <button class="chip" type="button" id="numbers" aria-pressed="false">번호</button>
+        <span class="spacer"></span>
+        <button class="btn btn-ghost btn-sm" id="undo" disabled>되돌리기</button>
+        <button class="btn btn-ghost btn-sm" id="reset">한 칸으로</button>
+      </div>
+      <div class="canvas-wrap"><canvas id="preview"></canvas></div>
+      <p class="meta" id="meta"></p>
+      <div class="actions">
+        <button class="btn btn-primary" id="dl-psd">PSD 다운로드</button>
+        <button class="btn btn-ghost" id="dl-svg">SVG</button>
+        <button class="btn btn-ghost" id="dl-png">PNG</button>
+        <button class="btn btn-ghost" id="copy-png">PNG 복사</button>
+      </div>
+      <p id="status"></p>
+      <p class="note">
+        칸 안을 <strong>클릭</strong>하면 그 자리에서 갈라집니다. <kbd>Alt</kbd>를 누른 채 클릭하면 반대 방향으로 갈라집니다.
+        경계선을 <strong>드래그</strong>하면 그 선이 움직이고, <kbd>Shift</kbd>를 같이 누르면 선이 기울어집니다.
+        <kbd>Ctrl</kbd>+<kbd>Z</kbd>로 되돌립니다.
+      </p>
+      <p class="note">
+        <strong>오른쪽 클릭</strong>은 칸을 집어 드는 것까지만 합니다. 집어 든 뒤에 합칠 칸을 하나 더 클릭하면 둘이 한 칸이 되는데,
+        <strong>초록으로 물드는 칸</strong>만 됩니다 — 변을 맞대고 있어 한 덩어리가 되는 칸입니다.
+        <strong>ㄱ자·ㄷ자</strong>처럼 꺾인 칸도 되고, 합친 칸에 또 붙여 계속 키울 수도 있습니다.
+        집어 든 상태에서 <kbd>Delete</kbd>는 그 칸을 지우고, <kbd>Esc</kbd>는 선택을 놓습니다.
+        합친 칸을 오른쪽 클릭하면 도로 풀립니다.
+      </p>
+      <p class="note">
+        <strong>PSD</strong>는 칸마다 폴더 하나로 나옵니다. 폴더에 벡터 마스크가 걸려 있어 안의 <strong>그림</strong> 레이어에 그리면 칸 모양대로 잘리고,
+        테두리는 그 폴더의 레이어 스타일이라 포토샵에서 마스크 모서리를 옮기면 같이 따라옵니다. 고칠 패스가 한 벌뿐입니다.
+        칸 번호와 참고 이미지는 화면에서만 쓰는 것이라 어떤 파일에도 들어가지 않고, 순서는 대신 폴더 이름이 가집니다.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Footer ── -->
+<footer>
+  <a href="../index.html">
+    <img src="../post-images/1ab44f_b4e1291ff6614694b1631f2ab912f957~mv2.png" alt="RetroBot CI">
+  </a>
+  <p>&copy; 2026 RetroBot CI Inc. All Rights Reserved.</p>
+</footer>
+
+<script src="ag-psd.bundle.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // ══ Geometry ══════════════════════════════════════════
+  // A page is one convex polygon. Every cut clips it into two convex polygons,
+  // so nothing here ever has to deal with a concave shape - which is what lets
+  // a slanted cut work the same as a straight one, at any depth.
+  //
+  // poly = { pts: [[x,y], ...], inner: [bool, ...] }
+  //   inner[i] marks the edge pts[i] -> pts[i+1] as a cut rather than a page
+  //   edge. Only cut edges get pulled back to open the gutter; page edges stay
+  //   put, so the outer margin stays exactly what the slider says.
+  //
+  // Winding is clockwise on screen (y down), so the outward normal of an edge
+  // (ex, ey) is (ey, -ex).
+
+  var KAPPA = 0.5522847498307936;
+
+  function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+  function rot(x, y, a) { var c = Math.cos(a), s = Math.sin(a); return [x * c - y * s, x * s + y * c]; }
+
+  function rectPoly(x, y, w, h) {
+    return {
+      pts: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]],
+      inner: [false, false, false, false]
+    };
+  }
+
+  // Sutherland-Hodgman against the half plane dot(p - c, n) <= 0, carrying the
+  // per-edge flags through: a clipped-off stretch leaves a new edge lying on the
+  // clip line, and that edge is by definition a cut.
+  function clipPoly(poly, cx, cy, nx, ny) {
+    var pts = poly.pts, inner = poly.inner, n = pts.length;
+    var out = [], flags = [];
+    for (var i = 0; i < n; i++) {
+      var a = pts[i], b = pts[(i + 1) % n], f = inner[i];
+      var da = (a[0] - cx) * nx + (a[1] - cy) * ny;
+      var db = (b[0] - cx) * nx + (b[1] - cy) * ny;
+      var ain = da <= 0, bin = db <= 0;
+      if (ain) { out.push(a); flags.push(f); }
+      if (ain !== bin) {
+        var t = da / (da - db);
+        out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+        // leaving the half plane: the next edge runs along the clip line
+        flags.push(ain ? true : f);
+      }
+    }
+    return dedupe({ pts: out, inner: flags });
+  }
+
+  // A vertex sitting exactly on the clip line gets emitted twice. Drop the
+  // earlier copy - the flag that matters is the one on the edge leaving it.
+  function dedupe(poly) {
+    var pts = [], inner = [], n = poly.pts.length;
+    for (var i = 0; i < n; i++) {
+      var a = poly.pts[i], b = poly.pts[(i + 1) % n];
+      if (Math.abs(a[0] - b[0]) < 1e-7 && Math.abs(a[1] - b[1]) < 1e-7) continue;
+      pts.push(a);
+      inner.push(poly.inner[i]);
+    }
+    return { pts: pts, inner: inner };
+  }
+
+  function polyBBox(poly) {
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    poly.pts.forEach(function (p) {
+      if (p[0] < minX) minX = p[0];
+      if (p[1] < minY) minY = p[1];
+      if (p[0] > maxX) maxX = p[0];
+      if (p[1] > maxY) maxY = p[1];
+    });
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+  }
+
+  function polyArea(poly) {
+    var pts = poly.pts, n = pts.length, s = 0;
+    for (var i = 0; i < n; i++) {
+      var a = pts[i], b = pts[(i + 1) % n];
+      s += a[0] * b[1] - b[0] * a[1];
+    }
+    return Math.abs(s) / 2;
+  }
+
+  function polyCentre(poly) {
+    var x = 0, y = 0;
+    poly.pts.forEach(function (p) { x += p[0]; y += p[1]; });
+    return [x / poly.pts.length, y / poly.pts.length];
+  }
+
+  // Crossing number, so it holds for the ㄱ-shaped panels a merge can produce.
+  // A "point is on the inner side of every edge" test would only be right for
+  // panels that stay convex.
+  function pointInPoly(poly, x, y) {
+    var pts = poly.pts, n = pts.length, inside = false;
+    for (var i = 0, j = n - 1; i < n; j = i++) {
+      var xi = pts[i][0], yi = pts[i][1], xj = pts[j][0], yj = pts[j][1];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+
+  function distToSeg(px, py, a, b) {
+    var ex = b[0] - a[0], ey = b[1] - a[1];
+    var L2 = ex * ex + ey * ey;
+    var t = L2 > 0 ? clamp(((px - a[0]) * ex + (py - a[1]) * ey) / L2, 0, 1) : 0;
+    return Math.hypot(px - (a[0] + ex * t), py - (a[1] + ey * t));
+  }
+
+  function edgeDistance(poly, x, y) {
+    var pts = poly.pts, n = pts.length, best = Infinity;
+    for (var i = 0; i < n; i++) {
+      var d = distToSeg(x, y, pts[i], pts[(i + 1) % n]);
+      if (d < best) best = d;
+    }
+    return best;
+  }
+
+  // Well inside, not merely inside: used to spot the cuts a merge has swallowed,
+  // which sit in the middle of the merged panel rather than on its border.
+  function deepInside(poly, x, y, m) {
+    return pointInPoly(poly, x, y) && edgeDistance(poly, x, y) > (m === undefined ? 0.5 : m);
+  }
+
+  function polyCentroid(poly) {
+    var pts = poly.pts, n = pts.length, a = 0, cx = 0, cy = 0;
+    for (var i = 0; i < n; i++) {
+      var p = pts[i], q = pts[(i + 1) % n];
+      var f = p[0] * q[1] - q[0] * p[1];
+      a += f;
+      cx += (p[0] + q[0]) * f;
+      cy += (p[1] + q[1]) * f;
+    }
+    if (Math.abs(a) < 1e-9) return polyCentre(poly);
+    return [cx / (3 * a), cy / (3 * a)];
+  }
+
+  // Somewhere to put the panel number. A ㄱ-shaped panel's centroid can fall in
+  // the notch - outside the panel, or on top of its neighbour - so when that
+  // happens, hunt for the roomiest spot that is actually inside.
+  function interiorPoint(poly) {
+    var c = polyCentroid(poly);
+    if (pointInPoly(poly, c[0], c[1])) return c;
+    var bb = polyBBox(poly), best = c, bestD = -Infinity, N = 24;
+    for (var i = 0; i < N; i++) {
+      for (var j = 0; j < N; j++) {
+        var x = bb.x + (i + 0.5) * bb.w / N, y = bb.y + (j + 0.5) * bb.h / N;
+        if (!pointInPoly(poly, x, y)) continue;
+        var d = edgeDistance(poly, x, y);
+        if (d > bestD) { bestD = d; best = [x, y]; }
+      }
+    }
+    return best;
+  }
+
+  // ══ Union ═════════════════════════════════════════════
+  // Merging panels cancels shared edges rather than running any general boolean
+  // geometry: two regions that meet along a border each contribute that border
+  // once, in opposite directions, so dropping every such pair leaves exactly the
+  // outline of the whole. It is exact, it carries the page-edge/cut flags
+  // through untouched, and it does not care whether the result is convex -
+  // which is the entire point of doing it this way.
+
+  var SNAP = 1e-3;
+
+  function keyOf(p) { return Math.round(p[0] / SNAP) + ',' + Math.round(p[1] / SNAP); }
+
+  // A corner of one panel can land partway along another panel's edge - a T
+  // junction. Left alone, the long edge and the two short ones never pair off
+  // and the cancellation leaves a tangle, so split the long one first.
+  function splitAtJunctions(polys) {
+    var corners = [];
+    polys.forEach(function (poly) {
+      poly.pts.forEach(function (p) { corners.push(p); });
+    });
+    return polys.map(function (poly) {
+      var pts = [], inner = [], n = poly.pts.length;
+      for (var i = 0; i < n; i++) {
+        var a = poly.pts[i], b = poly.pts[(i + 1) % n];
+        pts.push(a);
+        inner.push(poly.inner[i]);
+        var ex = b[0] - a[0], ey = b[1] - a[1], L2 = ex * ex + ey * ey;
+        if (L2 < 1e-12) continue;
+        var hits = [], seen = {};
+        corners.forEach(function (c) {
+          var t = ((c[0] - a[0]) * ex + (c[1] - a[1]) * ey) / L2;
+          if (t <= 1e-9 || t >= 1 - 1e-9) return;
+          var dx = a[0] + ex * t - c[0], dy = a[1] + ey * t - c[1];
+          if (dx * dx + dy * dy > SNAP * SNAP) return;
+          var k = keyOf(c);
+          if (seen[k]) return;
+          seen[k] = true;
+          hits.push([t, c]);
+        });
+        hits.sort(function (u, v) { return u[0] - v[0]; });
+        hits.forEach(function (h) {
+          pts.push(h[1]);
+          inner.push(poly.inner[i]);
+        });
+      }
+      return { pts: pts, inner: inner };
+    });
+  }
+
+  function unionPolys(polys) {
+    var parts = splitAtJunctions(polys);
+    var pool = {}, live = 0;
+    for (var pi = 0; pi < parts.length; pi++) {
+      var poly = parts[pi], n = poly.pts.length;
+      for (var i = 0; i < n; i++) {
+        var a = poly.pts[i], b = poly.pts[(i + 1) % n];
+        var ka = keyOf(a), kb = keyOf(b);
+        if (ka === kb) continue;
+        var back = kb + '>' + ka;
+        if (pool[back]) { delete pool[back]; live--; continue; }
+        var fwd = ka + '>' + kb;
+        if (pool[fwd]) return null;              // same border twice the same way
+        pool[fwd] = { a: a, b: b, inner: poly.inner[i], ka: ka, kb: kb };
+        live++;
+      }
+    }
+    if (live < 3) return null;
+
+    var from = {}, keys = Object.keys(pool);
+    for (i = 0; i < keys.length; i++) {
+      var e = pool[keys[i]];
+      if (from[e.ka]) return null;               // the outline forks at a corner
+      from[e.ka] = e;
+    }
+
+    var cur = pool[keys[0]], loop = [], flags = [], walked = {};
+    while (cur && !walked[cur.ka]) {
+      walked[cur.ka] = true;
+      loop.push(cur.a);
+      flags.push(cur.inner);
+      cur = from[cur.kb];
+    }
+    if (loop.length !== keys.length) return null;   // more than one loop, or a gap
+    return dropCollinear({ pts: loop, inner: flags });
+  }
+
+  // Splitting at junctions leaves straight-through vertices behind. They would
+  // survive into the anchor count and into corner rounding as zero-degree
+  // corners, so fold them back out - but only where the flag does not change.
+  function dropCollinear(poly) {
+    var pts = [], inner = [], n = poly.pts.length;
+    for (var i = 0; i < n; i++) {
+      var prev = poly.pts[(i - 1 + n) % n], cur = poly.pts[i], next = poly.pts[(i + 1) % n];
+      var ax = cur[0] - prev[0], ay = cur[1] - prev[1];
+      var bx = next[0] - cur[0], by = next[1] - cur[1];
+      var L = Math.hypot(ax, ay) * Math.hypot(bx, by);
+      var straight = L > 0 && Math.abs(ax * by - ay * bx) / L < 1e-9;
+      if (straight && poly.inner[(i - 1 + n) % n] === poly.inner[i]) continue;
+      pts.push(cur);
+      inner.push(poly.inner[i]);
+    }
+    return { pts: pts, inner: inner };
+  }
+
+  // `at` runs across the region's bounding box, and `tilt` swings the line about
+  // that point - so moving a cut and angling it stay independent of each other.
+  function cutRegion(poly, dir, at, tilt) {
+    var bb = polyBBox(poly);
+    if (bb.w < 1 || bb.h < 1) return null;
+    var a = (tilt || 0) * Math.PI / 180;
+    var cx, cy, nrm;
+    if (dir === 'v') {
+      cx = bb.x + at * bb.w; cy = bb.y + bb.h / 2;
+      nrm = rot(1, 0, a);
+    } else {
+      cx = bb.x + bb.w / 2; cy = bb.y + at * bb.h;
+      nrm = rot(0, 1, a);
+    }
+    var A = clipPoly(poly, cx, cy, nrm[0], nrm[1]);
+    var B = clipPoly(poly, cx, cy, -nrm[0], -nrm[1]);
+    if (A.pts.length < 3 || B.pts.length < 3) return null;
+
+    // the shared edge, for hit testing and for drawing the drag handle
+    var seg = null;
+    for (var i = 0; i < A.pts.length; i++) {
+      if (A.inner[i]) { seg = [A.pts[i], A.pts[(i + 1) % A.pts.length]]; break; }
+    }
+    return { A: A, B: B, seg: seg, at: at };
+  }
+
+  // Pull every cut edge in by d, leave page edges where they are, and rebuild
+  // each corner where the moved lines now cross.
+  //
+  // This used to clip the panel by each offset edge line, which is exact for a
+  // convex panel and wrong for a ㄱ-shaped one: a half-plane reaches clear
+  // across the shape, so the cut that should only trim the notch slices the far
+  // arm off as well. Intersecting neighbouring lines is local, so it does not.
+  function insetPoly(poly, d) {
+    if (d <= 0) return poly;
+    var n = poly.pts.length;
+    if (n < 3) return { pts: [], inner: [] };
+
+    var lines = [], i;
+    for (i = 0; i < n; i++) {
+      var a = poly.pts[i], b = poly.pts[(i + 1) % n];
+      var ex = b[0] - a[0], ey = b[1] - a[1], L = Math.hypot(ex, ey);
+      if (L < 1e-9) return { pts: [], inner: [] };
+      var ux = ex / L, uy = ey / L;
+      var off = poly.inner[i] ? d : 0;
+      lines.push({ px: a[0] - uy * off, py: a[1] + ux * off, dx: ux, dy: uy });
+    }
+
+    var pts = [];
+    for (i = 0; i < n; i++) {
+      var p = lines[(i - 1 + n) % n], q = lines[i];
+      var den = p.dx * q.dy - p.dy * q.dx;
+      if (Math.abs(den) < 1e-9) { pts.push([q.px, q.py]); continue; }   // parallel
+      var t = ((q.px - p.px) * q.dy - (q.py - p.py) * q.dx) / den;
+      pts.push([p.px + p.dx * t, p.py + p.dy * t]);
+    }
+
+    // A panel thinner than the gutter turns itself inside out here - an edge
+    // comes back pointing the wrong way. Let it vanish, which is what the
+    // caller already knows how to report.
+    for (i = 0; i < n; i++) {
+      var s = pts[i], e = pts[(i + 1) % n];
+      if ((e[0] - s[0]) * lines[i].dx + (e[1] - s[1]) * lines[i].dy < -1e-9) return { pts: [], inner: [] };
+    }
+    var out = { pts: pts, inner: poly.inner.slice() };
+    return polyArea(out) < 1 ? { pts: [], inner: [] } : out;
+  }
+
+  // ══ Path ══════════════════════════════════════════════
+  // Corners become bezier knots, so the canvas preview, the SVG and the PSD
+  // vector mask are all drawn from one description.
+  //
+  // Knot: { x, y, ix, iy, ox, oy, linked }
+  //   x,y = anchor   ix,iy = incoming control   ox,oy = outgoing control
+
+  function sharp(x, y) { return { x: x, y: y, ix: x, iy: y, ox: x, oy: y, linked: false }; }
+
+  function polyKnots(poly, radius) {
+    var pts = poly.pts, n = pts.length, knots = [];
+    for (var i = 0; i < n; i++) {
+      var p = pts[(i - 1 + n) % n], v = pts[i], q = pts[(i + 1) % n];
+      var ax = v[0] - p[0], ay = v[1] - p[1], la = Math.hypot(ax, ay);
+      var bx = q[0] - v[0], by = q[1] - v[1], lb = Math.hypot(bx, by);
+      if (la < 1e-6 || lb < 1e-6) continue;
+      var r = Math.min(radius, la / 2, lb / 2);
+      if (r < 0.5) { knots.push(sharp(v[0], v[1])); continue; }
+      var s = [v[0] - ax / la * r, v[1] - ay / la * r];
+      var e = [v[0] + bx / lb * r, v[1] + by / lb * r];
+      // Control points a fixed fraction of the way to the corner. Exact for a
+      // right angle, and close enough for the slanted ones a tilted cut makes.
+      knots.push({
+        x: s[0], y: s[1], ix: s[0], iy: s[1],
+        ox: s[0] + (v[0] - s[0]) * KAPPA, oy: s[1] + (v[1] - s[1]) * KAPPA, linked: false
+      });
+      knots.push({
+        x: e[0], y: e[1],
+        ix: e[0] + (v[0] - e[0]) * KAPPA, iy: e[1] + (v[1] - e[1]) * KAPPA,
+        ox: e[0], oy: e[1], linked: false
+      });
+    }
+    return knots;
+  }
+
+  function eachSegment(knots, fn) {
+    for (var i = 0; i < knots.length; i++) fn(knots[i], knots[(i + 1) % knots.length]);
+  }
+
+  function pathOf(knots) {
+    var p = new Path2D();
+    p.moveTo(knots[0].x, knots[0].y);
+    eachSegment(knots, function (a, b) { p.bezierCurveTo(a.ox, a.oy, b.ix, b.iy, b.x, b.y); });
+    p.closePath();
+    return p;
+  }
+
+  function r2(n) { return Math.round(n * 100) / 100; }
+
+  function pathToSVG(knots) {
+    var d = 'M ' + r2(knots[0].x) + ' ' + r2(knots[0].y);
+    eachSegment(knots, function (a, b) {
+      d += ' C ' + r2(a.ox) + ' ' + r2(a.oy) + ' ' + r2(b.ix) + ' ' + r2(b.iy) + ' ' + r2(b.x) + ' ' + r2(b.y);
+    });
+    return d + ' Z';
+  }
+
+  // PSD knot points are [inX, inY, anchorX, anchorY, outX, outY] in absolute px,
+  // measured against the document - not against the layer's own bounds.
+  function pathToPSD(knots) {
+    return knots.map(function (k) {
+      return { linked: k.linked, points: [k.ix, k.iy, k.x, k.y, k.ox, k.oy] };
+    });
+  }
+
+  function knotsBBox(knots) {
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    knots.forEach(function (k) {
+      [[k.x, k.y], [k.ix, k.iy], [k.ox, k.oy]].forEach(function (p) {
+        if (p[0] < minX) minX = p[0];
+        if (p[1] < minY) minY = p[1];
+        if (p[0] > maxX) maxX = p[0];
+        if (p[1] > maxY) maxY = p[1];
+      });
+    });
+    return { minX: minX, minY: minY, maxX: maxX, maxY: maxY };
+  }
+
+  // ══ The tree ══════════════════════════════════════════
+  // A leaf is a panel. A branch is a cut: { dir, at, tilt, a, b }. Everything
+  // the three ways of building a layout produce is one of these trees, which is
+  // why a preset can be taken apart by hand and a hand-made one re-generated.
+
+  // Every node carries an id. A merge is remembered as a list of leaf ids rather
+  // than as a list of leaf objects, because undo restores a *copy* of the tree -
+  // object identity does not survive that, and an id does.
+  var nextId = 1;
+
+  function leaf() { return { id: nextId++ }; }
+  function isLeaf(n) { return !n.dir; }
+  function cut(dir, at, a, b, tilt) {
+    return { id: nextId++, dir: dir, at: at, tilt: tilt || 0, a: a, b: b };
+  }
+
+  function cloneTree(n) {
+    if (isLeaf(n)) return { id: n.id };
+    return { id: n.id, dir: n.dir, at: n.at, tilt: n.tilt, a: cloneTree(n.a), b: cloneTree(n.b) };
+  }
+
+  function findParent(node, child) {
+    if (isLeaf(node)) return null;
+    if (node.a === child || node.b === child) return node;
+    return findParent(node.a, child) || findParent(node.b, child);
+  }
+
+  // Reading order falls out of the walk: a horizontal cut is always top first,
+  // and a vertical one starts on whichever side the reader starts on.
+  function walkTree(node, poly, leaves, cuts, rtl) {
+    if (isLeaf(node)) { leaves.push({ node: node, poly: poly }); return; }
+    var r = cutRegion(poly, node.dir, node.at, node.tilt);
+    if (!r) { leaves.push({ node: node, poly: poly }); return; }
+    cuts.push({ node: node, seg: r.seg, parent: poly });
+    var first = node.dir === 'v' && rtl ? r.B : r.A;
+    var second = node.dir === 'v' && rtl ? r.A : r.B;
+    var firstNode = node.dir === 'v' && rtl ? node.b : node.a;
+    var secondNode = node.dir === 'v' && rtl ? node.a : node.b;
+    walkTree(firstNode, first, leaves, cuts, rtl);
+    walkTree(secondNode, second, leaves, cuts, rtl);
+  }
+
+  // ══ Presets ═══════════════════════════════════════════
+  // `at` is relative to the region being cut, so cutting off one row at a time
+  // and recursing on the rest gives equal rows without any arithmetic.
+
+  function rows(n) { return n <= 1 ? leaf() : cut('h', 1 / n, leaf(), rows(n - 1)); }
+  function cols(n) { return n <= 1 ? leaf() : cut('v', 1 / n, leaf(), cols(n - 1)); }
+  function grid(r, c) { return r <= 1 ? cols(c) : cut('h', 1 / r, cols(c), grid(r - 1, c)); }
+
+  var PRESETS = [
+    ['1칸', function () { return leaf(); }],
+    ['2단', function () { return rows(2); }],
+    ['3단', function () { return rows(3); }],
+    ['4단', function () { return rows(4); }],
+    ['2×2', function () { return grid(2, 2); }],
+    ['3행 2열', function () { return grid(3, 2); }],
+    ['4행 2열', function () { return grid(4, 2); }],
+    ['상1 하2', function () { return cut('h', 0.5, leaf(), cols(2)); }],
+    ['상2 하1', function () { return cut('h', 0.5, cols(2), leaf()); }],
+    ['좌1 우2', function () { return cut('v', 0.5, leaf(), rows(2)); }],
+    ['큰칸 + 3단', function () { return cut('h', 0.46, leaf(), rows(3)); }],
+    ['역동 3칸', function () { return cut('h', 0.4, leaf(), cut('v', 0.45, leaf(), leaf(), 9), -7); }],
+    ['역동 5칸', function () {
+      return cut('h', 0.36,
+        cut('v', 0.55, leaf(), leaf(), 8),
+        cut('h', 0.5, leaf(), cut('v', 0.5, leaf(), leaf(), -10), 6),
+        -5);
+    }]
+  ];
+
+  var PAGES = [
+    ['A4 300dpi', 2480, 3508],
+    ['A4 150dpi', 1240, 1754],
+    ['국판 300dpi', 1748, 2480],
+    ['정사각', 1500, 1500],
+    ['웹툰 세로', 800, 2400],
+    ['와이드', 1920, 1080]
+  ];
+
+  // ══ Auto layout ═══════════════════════════════════════
+
+  function mulberry32(seed) {
+    var t = seed >>> 0;
+    return function () {
+      t = (t + 0x6D2B79F5) >>> 0;
+      var r = Math.imul(t ^ (t >>> 15), 1 | t);
+      r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+      return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // Split the roomiest panel each time, across whichever way it is longest, so
+  // the panels stay close to a workable shape however many are asked for.
+  // `dyn` is the only thing that pushes it off centre, or off square.
+  function autoTree(n, dyn, seed, W, H) {
+    var rnd = mulberry32(seed);
+    // real leaves, so they carry ids; w/h ride along as bookkeeping and are
+    // dropped by the cloneTree at the end
+    function box(w, h) { var n = leaf(); n.w = w; n.h = h; return n; }
+    var root = box(W, H);
+    var open = [root];
+    while (open.length < n) {
+      open.sort(function (x, y) { return y.w * y.h - x.w * x.h; });
+      // among the largest handful, not strictly the largest, or every layout at
+      // a given count comes out the same
+      var top = Math.max(1, Math.ceil(open.length * 0.45));
+      var pick = open[Math.floor(rnd() * top)];
+      var dir = pick.h >= pick.w ? 'h' : 'v';
+      if (rnd() < dyn / 320) dir = dir === 'h' ? 'v' : 'h';
+      var at = clamp(0.5 + (rnd() - 0.5) * (dyn / 100) * 0.55, 0.24, 0.76);
+      var tilt = (rnd() - 0.5) * 2 * (dyn / 100) * 9;
+      var a = dir === 'h' ? box(pick.w, pick.h * at) : box(pick.w * at, pick.h);
+      var b = dir === 'h' ? box(pick.w, pick.h * (1 - at)) : box(pick.w * (1 - at), pick.h);
+      pick.dir = dir; pick.at = at; pick.tilt = tilt; pick.a = a; pick.b = b;
+      open.splice(open.indexOf(pick), 1);
+      open.push(a, b);
+    }
+    return cloneTree(root);   // drops the w/h bookkeeping
+  }
+
+  // ══ State ═════════════════════════════════════════════
+
+  var state = {
+    w: 1240, h: 1754, margin: 70, gutter: 28, sw: 5, radius: 0,
+    fill: '#ffffff', stroke: '#000000',
+    dir: 'h', rtl: true, numbers: false, count: 6, dyn: 40, seed: 7,
+    refFit: 'contain', refOpacity: 50
+  };
+
+  var ref = { img: null, url: null };
+
+  var tree = grid(3, 2);
+  var groups = [];          // each entry: leaf ids that are drawn as one panel
+  var selected = null;      // leaf id waiting for a partner to merge with
+  var history = [];
+
+  var canvas = document.getElementById('preview');
+  var ctx = canvas.getContext('2d');
+  var meta = document.getElementById('meta');
+  var status = document.getElementById('status');
+  var undoBtn = document.getElementById('undo');
+
+  var view = { panels: [], cuts: [], broken: 0 };
+  var hover = { panel: null, cut: null, x: 0, y: 0 };
+  var drag = null;
+
+  function say(msg) { status.textContent = msg; }
+
+  function push() {
+    history.push({
+      tree: cloneTree(tree),
+      groups: groups.map(function (g) { return g.slice(); })
+    });
+    if (history.length > 60) history.shift();
+    undoBtn.disabled = false;
+  }
+
+  function undo() {
+    if (!history.length) return;
+    var was = history.pop();
+    tree = was.tree;
+    groups = was.groups;
+    selected = null;
+    undoBtn.disabled = !history.length;
+    render();
+    say('되돌렸습니다.');
+  }
+
+  // Anything that throws the layout away has to throw the merges away with it -
+  // they name leaves that are about to stop existing.
+  function replaceTree(next) {
+    push();
+    tree = next;
+    groups = [];
+    selected = null;
+  }
+
+  function groupOf(id) {
+    for (var i = 0; i < groups.length; i++) {
+      if (groups[i].indexOf(id) >= 0) return groups[i];
+    }
+    return null;
+  }
+
+  // ══ Render ════════════════════════════════════════════
+
+  function rootPoly() {
+    var m = Math.min(state.margin, Math.min(state.w, state.h) / 2 - 10);
+    return rectPoly(m, m, state.w - m * 2, state.h - m * 2);
+  }
+
+  // The panel as it gets drawn: region pulled back by half the gutter on its cut
+  // edges, corners rounded. Two neighbours each give up half, so the gap between
+  // them is the gutter.
+  function panelKnots(poly) {
+    var inset = insetPoly(poly, state.gutter / 2);
+    if (inset.pts.length < 3) return null;
+    var knots = polyKnots(inset, state.radius);
+    return knots.length >= 2 ? knots : null;
+  }
+
+  // The border is drawn INSIDE the panel outline, never straddling it.
+  //
+  // Canvas has no alignment setting - a stroke always sits half in, half out -
+  // so this clips to the panel and strokes at twice the width, leaving exactly
+  // the inner half. The SVG export does the same with a clipPath, and the PSD
+  // gets it from the layer style, so all three agree and the sliders mean what
+  // they say: the outer margin is the margin, and the gap between two panels is
+  // the gutter, with no half a stroke eaten off either.
+  function paintPanel(c, knots) {
+    var p = pathOf(knots);
+    c.fillStyle = state.fill;
+    c.fill(p, 'nonzero');
+    if (state.sw > 0) {
+      c.save();
+      c.clip(p, 'nonzero');
+      c.lineJoin = 'miter';
+      c.miterLimit = 10;
+      c.lineWidth = state.sw * 2;
+      c.strokeStyle = state.stroke;
+      c.stroke(p);
+      c.restore();
+    }
+  }
+
+  // Panels only - no overlay. The exports draw through this, so what leaves the
+  // page is never what the guides added to it.
+  function paintPage(c) {
+    view.panels.forEach(function (p) {
+      if (p.knots) paintPanel(c, p.knots);
+    });
+  }
+
+  // One merged panel out of several regions. Returns null when they do not make
+  // a single panel between them - not touching, touching only at a corner, or
+  // closing a ring around a hole - and also when a later edit has pulled them
+  // apart, so a stale merge stops drawing over its neighbours.
+  function mergePolys(polys) {
+    if (polys.length === 1) return polys[0];
+    var u = unionPolys(polys);
+    if (!u || u.pts.length < 3) return null;
+    var want = polys.reduce(function (s, p) { return s + polyArea(p); }, 0);
+    if (Math.abs(polyArea(u) - want) > Math.max(1, want * 1e-4)) return null;
+    return u;
+  }
+
+  // What actually gets drawn: the tree's regions, with each merged set collapsed
+  // into a single panel that takes the reading position of its first member.
+  function buildPanels(root) {
+    var leaves = [], cuts = [];
+    walkTree(tree, root, leaves, cuts, state.rtl);
+
+    var byId = {};
+    leaves.forEach(function (l) { byId[l.node.id] = l; });
+
+    var panels = [], done = {}, broken = 0;
+    leaves.forEach(function (l) {
+      var g = groupOf(l.node.id);
+      if (!g) {
+        panels.push({ ids: [l.node.id], node: l.node, poly: l.poly, merged: false });
+        return;
+      }
+      var key = g.join(',');
+      if (done[key]) return;
+      done[key] = true;
+      var members = g.map(function (id) { return byId[id]; }).filter(Boolean);
+      if (!members.length) return;
+      var poly = mergePolys(members.map(function (m) { return m.poly; }));
+      if (!poly) {
+        broken++;
+        members.forEach(function (m) {
+          panels.push({ ids: [m.node.id], node: m.node, poly: m.poly, merged: false });
+        });
+        return;
+      }
+      panels.push({
+        ids: members.map(function (m) { return m.node.id; }),
+        node: members.length > 1 ? null : members[0].node,
+        poly: poly,
+        merged: members.length > 1
+      });
+    });
+
+    // A cut swallowed by a merge is no longer a border anyone can see, so it
+    // stops being something the mouse can grab.
+    var merged = panels.filter(function (p) { return p.merged; });
+    var live = cuts.filter(function (cu) {
+      if (!cu.seg) return false;
+      var mx = (cu.seg[0][0] + cu.seg[1][0]) / 2, my = (cu.seg[0][1] + cu.seg[1][1]) / 2;
+      return !merged.some(function (p) { return deepInside(p.poly, mx, my); });
+    });
+
+    return { panels: panels, cuts: live, broken: broken };
+  }
+
+  function render() {
+    var root = rootPoly();
+    var built = buildPanels(root);
+    view.panels = built.panels;
+    view.cuts = built.cuts;
+    view.broken = built.broken;
+    view.panels.forEach(function (p) { p.knots = panelKnots(p.poly); });
+
+    if (canvas.width !== state.w || canvas.height !== state.h) {
+      canvas.width = state.w;
+      canvas.height = state.h;
+    }
+    ctx.clearRect(0, 0, state.w, state.h);
+    paintUnderlay(ctx);
+    paintPage(ctx);
+    paintOverlay(ctx);
+
+    var anchors = view.panels.reduce(function (n, p) { return n + (p.knots ? p.knots.length : 0); }, 0);
+    var lost = view.panels.filter(function (p) { return !p.knots; }).length;
+    var joined = view.panels.filter(function (p) { return p.merged; }).length;
+    meta.textContent = state.w + ' × ' + state.h + ' px · ' + view.panels.length + '칸 · ' +
+                       anchors + ' anchor points' +
+                       (joined ? ' · 합친 칸 ' + joined + '개' : '') +
+                       (lost ? ' · ' + lost + '칸은 간격에 눌려 사라졌습니다' : '') +
+                       (view.broken ? ' · 합쳤던 칸 ' + view.broken + '개가 어긋나 도로 풀렸습니다' : '');
+    undoBtn.disabled = !history.length;
+  }
+
+  // The reference thumbnail, under everything. Called only from render(), never
+  // from paintPage - which is the one path the exports go through, so the
+  // thumbnail cannot leak into a file no matter what is on screen.
+  function paintUnderlay(c) {
+    if (!ref.img) return;
+    var box = refBox();
+    c.save();
+    c.globalAlpha = state.refOpacity / 100;
+    c.drawImage(ref.img, box.x, box.y, box.w, box.h);
+    c.restore();
+  }
+
+  // Where the thumbnail sits on the page, for the three ways of fitting it.
+  function refBox() {
+    var iw = ref.img.naturalWidth, ih = ref.img.naturalHeight;
+    var k = 1;
+    if (state.refFit === 'contain') k = Math.min(state.w / iw, state.h / ih);
+    else if (state.refFit === 'cover') k = Math.max(state.w / iw, state.h / ih);
+    var w = iw * k, h = ih * k;
+    return { x: (state.w - w) / 2, y: (state.h - h) / 2, w: w, h: h };
+  }
+
+  // Everything below this line is drawn for the person holding the mouse and
+  // for nobody else - it never reaches the canvas the exports read from.
+  function paintOverlay(c) {
+    var s = viewScale();
+
+    // While a panel is held for merging, the page stops offering to cut and
+    // starts answering one question instead: can this one join it?
+    if (selected !== null) {
+      var held = panelWithId(selected);
+      if (held) {
+        c.save();
+        c.fillStyle = 'rgba(239,78,35,0.20)';
+        c.fill(polyPath(held.poly));
+        c.strokeStyle = '#ef4e23';
+        c.lineWidth = 3 * s;
+        c.setLineDash([12 * s, 8 * s]);
+        c.stroke(polyPath(held.poly));
+        c.restore();
+      }
+      if (hover.panel && held && hover.panel !== held) {
+        var fits = canMerge(selected, hover.panel);
+        c.save();
+        c.fillStyle = fits ? 'rgba(126,184,176,0.30)' : 'rgba(140,140,140,0.20)';
+        c.fill(polyPath(hover.panel.poly));
+        if (fits) {
+          c.strokeStyle = '#7eb8b0';
+          c.lineWidth = 3 * s;
+          c.stroke(polyPath(hover.panel.poly));
+        }
+        c.restore();
+      }
+    } else if (hover.panel && !drag) {
+      c.save();
+      c.fillStyle = 'rgba(126,184,176,0.16)';
+      c.fill(polyPath(hover.panel.poly));
+      c.restore();
+      if (!hover.panel.merged) previewCutLine(c, hover.panel, s);
+    }
+
+    if (hover.cut || drag) {
+      var seg = (drag ? drag.entry : hover.cut).seg;
+      if (seg) {
+        c.save();
+        c.strokeStyle = '#ef4e23';
+        c.lineWidth = 3 * s;
+        c.beginPath();
+        c.moveTo(seg[0][0], seg[0][1]);
+        c.lineTo(seg[1][0], seg[1][1]);
+        c.stroke();
+        c.restore();
+      }
+    }
+
+    if (!state.numbers) return;
+    view.panels.forEach(function (l, i) {
+      if (!l.knots) return;
+      var ctr = interiorPoint(insetPoly(l.poly, state.gutter / 2));
+      var r = 17 * s;
+      c.save();
+      c.beginPath();
+      c.arc(ctr[0], ctr[1], r, 0, Math.PI * 2);
+      c.fillStyle = 'rgba(126,184,176,0.92)';
+      c.fill();
+      c.fillStyle = '#0a0a0a';
+      c.font = '600 ' + Math.round(20 * s) + 'px -apple-system, Segoe UI, sans-serif';
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.fillText(String(i + 1), ctr[0], ctr[1] + 1 * s);
+      c.restore();
+    });
+  }
+
+  function previewCutLine(c, entry, s) {
+    var bb = polyBBox(entry.poly);
+    var dir = hover.alt ? (state.dir === 'h' ? 'v' : 'h') : state.dir;
+    var at = dir === 'v' ? (hover.x - bb.x) / bb.w : (hover.y - bb.y) / bb.h;
+    var r = cutRegion(entry.poly, dir, clamp(at, 0.05, 0.95), 0);
+    if (!r || !r.seg) return;
+    c.save();
+    c.strokeStyle = '#ef4e23';
+    c.lineWidth = 2 * s;
+    c.setLineDash([10 * s, 7 * s]);
+    c.beginPath();
+    c.moveTo(r.seg[0][0], r.seg[0][1]);
+    c.lineTo(r.seg[1][0], r.seg[1][1]);
+    c.stroke();
+    c.restore();
+  }
+
+  function polyPath(poly) {
+    var p = new Path2D();
+    poly.pts.forEach(function (pt, i) { i ? p.lineTo(pt[0], pt[1]) : p.moveTo(pt[0], pt[1]); });
+    p.closePath();
+    return p;
+  }
+
+  // Page pixels per on-screen pixel. Guides are sized through this so they stay
+  // the same weight whether the page is A4 at 300dpi or a small square.
+  function viewScale() {
+    var rect = canvas.getBoundingClientRect();
+    return rect.width > 0 ? canvas.width / rect.width : 1;
+  }
+
+  // ══ Interaction ═══════════════════════════════════════
+
+  function toPage(e) {
+    var rect = canvas.getBoundingClientRect();
+    return [
+      (e.clientX - rect.left) * (canvas.width / rect.width),
+      (e.clientY - rect.top) * (canvas.height / rect.height)
+    ];
+  }
+
+  function cutAt(x, y) {
+    var reach = 11 * viewScale(), best = null, bestD = reach;
+    view.cuts.forEach(function (cu) {
+      if (!cu.seg) return;
+      var d = distToSeg(x, y, cu.seg[0], cu.seg[1]);
+      if (d < bestD) { bestD = d; best = cu; }
+    });
+    return best;
+  }
+
+  function panelAt(x, y) {
+    for (var i = 0; i < view.panels.length; i++) {
+      if (pointInPoly(view.panels[i].poly, x, y)) return view.panels[i];
+    }
+    return null;
+  }
+
+  function panelWithId(id) {
+    for (var i = 0; i < view.panels.length; i++) {
+      if (view.panels[i].ids.indexOf(id) >= 0) return view.panels[i];
+    }
+    return null;
+  }
+
+  // Would these two make one straight-sided panel? Asked of the regions as they
+  // are now, so it stays true after cuts have been dragged around.
+  function canMerge(id, target) {
+    if (!target || target.ids.indexOf(id) >= 0) return false;
+    var held = panelWithId(id);
+    if (!held) return false;
+    return !!mergePolys([held.poly, target.poly]);
+  }
+
+  canvas.addEventListener('mousemove', function (e) {
+    var p = toPage(e);
+    hover.x = p[0]; hover.y = p[1]; hover.alt = e.altKey;
+
+    if (drag) {
+      var bb = polyBBox(drag.entry.parent);
+      var node = drag.entry.node;
+      if (e.shiftKey) {
+        // aim the line at the cursor, keeping it pinned where it already sits
+        var cx = node.dir === 'v' ? bb.x + node.at * bb.w : bb.x + bb.w / 2;
+        var cy = node.dir === 'v' ? bb.y + bb.h / 2 : bb.y + node.at * bb.h;
+        var dx = p[0] - cx, dy = p[1] - cy;
+        if (Math.hypot(dx, dy) > 8) {
+          var deg = node.dir === 'v'
+            ? Math.atan2(-dx, dy) * 180 / Math.PI
+            : Math.atan2(dy, dx) * 180 / Math.PI;
+          if (deg > 90) deg -= 180;
+          if (deg < -90) deg += 180;
+          node.tilt = clamp(deg, -35, 35);
+        }
+      } else {
+        node.at = clamp(node.dir === 'v' ? (p[0] - bb.x) / bb.w : (p[1] - bb.y) / bb.h, 0.05, 0.95);
+      }
+      render();
+      return;
+    }
+
+    // holding a panel for merging suspends the cut handles - one gesture at a
+    // time, or the same click means two things
+    var cu = selected === null ? cutAt(p[0], p[1]) : null;
+    var pn = cu ? null : panelAt(p[0], p[1]);
+    var changed = cu !== hover.cut || pn !== hover.panel;
+    hover.cut = cu;
+    hover.panel = pn;
+    if (selected !== null) {
+      canvas.style.cursor = pn ? (canMerge(selected, pn) ? 'pointer' : 'not-allowed') : 'default';
+    } else {
+      canvas.style.cursor = cu ? (cu.node.dir === 'v' ? 'col-resize' : 'row-resize')
+                               : (pn && !pn.merged ? 'crosshair' : (pn ? 'context-menu' : 'default'));
+    }
+    if (changed || pn) render();
+  });
+
+  canvas.addEventListener('mouseleave', function () {
+    if (drag) return;
+    hover.cut = null; hover.panel = null;
+    render();
+  });
+
+  canvas.addEventListener('mousedown', function (e) {
+    if (e.button !== 0 || selected !== null) return;
+    var p = toPage(e);
+    var cu = cutAt(p[0], p[1]);
+    if (!cu) return;
+    e.preventDefault();
+    push();
+    drag = { entry: cu, moved: false };
+    say('경계선을 옮기는 중 — Shift를 누르면 기울어집니다.');
+  });
+
+  window.addEventListener('mouseup', function () {
+    if (!drag) return;
+    drag = null;
+    say('');
+    render();
+  });
+
+  canvas.addEventListener('click', function (e) {
+    if (drag) return;
+    var p = toPage(e);
+    var pn = panelAt(p[0], p[1]);
+
+    if (selected !== null) {
+      if (pn) doMerge(pn);
+      else { selected = null; render(); say('선택을 취소했습니다.'); }
+      return;
+    }
+
+    if (cutAt(p[0], p[1])) return;          // that press was a drag, not a cut
+    if (!pn) return;
+    if (pn.merged) {
+      say('합친 칸은 쪼갤 수 없습니다. 오른쪽 클릭으로 먼저 푸세요.');
+      return;
+    }
+    splitLeaf(pn, p[0], p[1], e.altKey ? (state.dir === 'h' ? 'v' : 'h') : state.dir);
+  });
+
+  // Right-click no longer does anything on its own: it picks a panel up, and the
+  // next click decides what happens to it. Nothing is destroyed by one gesture.
+  canvas.addEventListener('contextmenu', function (e) {
+    e.preventDefault();
+    if (selected !== null) {
+      selected = null;
+      render();
+      say('선택을 취소했습니다.');
+      return;
+    }
+    var p = toPage(e);
+    var pn = panelAt(p[0], p[1]);
+    if (!pn) return;
+    if (pn.merged) { unmerge(pn); return; }
+    selected = pn.ids[0];
+    hover.cut = null;
+    render();
+    say('합칠 칸을 하나 더 클릭하세요. 초록으로 물드는 칸만 됩니다 — Esc 취소, Delete 이 칸 지우기.');
+  });
+
+  function doMerge(target) {
+    var held = panelWithId(selected);
+    if (!held) { selected = null; render(); return; }
+    if (target === held) {
+      selected = null;
+      render();
+      say('같은 칸입니다. 선택을 취소했습니다.');
+      return;
+    }
+    if (!canMerge(selected, target)) {
+      say('이 둘은 합칠 수 없습니다 — 서로 변을 맞대고 있어야 하고, 가운데를 비워 감쌀 수는 없습니다.');
+      return;                               // keep the selection, let them retry
+    }
+    var joined = held.ids.concat(target.ids);
+    push();
+    groups = groups.filter(function (g) {
+      return !g.some(function (id) { return joined.indexOf(id) >= 0; });
+    });
+    groups.push(joined);
+    selected = null;
+    hover.panel = null;
+    render();
+    say('칸 ' + joined.length + '개를 하나로 합쳤습니다.');
+  }
+
+  function unmerge(pn) {
+    push();
+    groups = groups.filter(function (g) {
+      return !g.some(function (id) { return pn.ids.indexOf(id) >= 0; });
+    });
+    selected = null;
+    hover.panel = null;
+    render();
+    say('합친 칸을 풀었습니다.');
+  }
+
+  function splitLeaf(entry, x, y, dir) {
+    var bb = polyBBox(entry.poly);
+    var at = clamp(dir === 'v' ? (x - bb.x) / bb.w : (y - bb.y) / bb.h, 0.08, 0.92);
+    var r = cutRegion(entry.poly, dir, at, 0);
+    var least = state.gutter + 24;
+    if (!r || Math.min(polyBBox(r.A).w, polyBBox(r.A).h, polyBBox(r.B).w, polyBBox(r.B).h) < least) {
+      say('여기서 더 쪼개면 칸이 간격보다 작아집니다.');
+      return;
+    }
+    push();
+    var n = entry.node;
+    n.dir = dir; n.at = at; n.tilt = 0; n.a = leaf(); n.b = leaf();
+    hover.panel = null;
+    render();
+    say('');
+  }
+
+  // Removing a panel removes the cut that made it, and whatever was on the other
+  // side of that cut - one panel or a whole nest of them - takes the space back.
+  // Which neighbour that is depends on the order the page was cut in, so this is
+  // no longer on a single click: it takes selecting the panel first.
+  function dropLeaf(entry) {
+    if (!entry.node) { say('합친 칸은 먼저 풀어 주세요.'); return; }
+    var parent = findParent(tree, entry.node);
+    if (!parent) { say('마지막 한 칸은 지울 수 없습니다.'); return; }
+    var sib = parent.a === entry.node ? parent.b : parent.a;
+    push();
+    if (isLeaf(sib)) {
+      delete parent.dir; delete parent.at; delete parent.tilt;
+      delete parent.a; delete parent.b;
+    } else {
+      parent.dir = sib.dir; parent.at = sib.at; parent.tilt = sib.tilt;
+      parent.a = sib.a; parent.b = sib.b;
+    }
+    // the panel is gone, so any merge that named it is gone with it
+    groups = groups.filter(function (g) { return g.indexOf(entry.node.id) < 0; });
+    selected = null;
+    hover.panel = null; hover.cut = null;
+    render();
+    say('칸을 지웠습니다.');
+  }
+
+  window.addEventListener('keydown', function (e) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      undo();
+      return;
+    }
+    if (e.key === 'Escape' && selected !== null) {
+      selected = null;
+      render();
+      say('선택을 취소했습니다.');
+      return;
+    }
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selected !== null) {
+      e.preventDefault();
+      var pn = panelWithId(selected);
+      if (pn) dropLeaf(pn);
+    }
+  });
+
+  // ══ Export ════════════════════════════════════════════
+
+  function filename(ext) { return 'panels-' + view.panels.length + '.' + ext; }
+
+  function save(blob, name) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  function hexToRgb(hex) {
+    var h = hex.replace('#', '');
+    return { r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16) };
+  }
+
+  function cleanCanvas() {
+    var c = document.createElement('canvas');
+    c.width = state.w;
+    c.height = state.h;
+    paintPage(c.getContext('2d'));
+    return c;
+  }
+
+  document.getElementById('dl-psd').addEventListener('click', function () {
+    try {
+      var drawn = view.panels.filter(function (l) { return l.knots; });
+      if (!drawn.length) { say('그릴 칸이 없습니다.'); return; }
+
+      var flat = cleanCanvas();
+      var flatData = flat.getContext('2d').getImageData(0, 0, state.w, state.h);
+
+      // Each panel becomes a FOLDER carrying the vector mask, with the border as
+      // a layer style on that same folder. The point is that there is only ever
+      // one copy of the path: editing the mask in Photoshop moves the crop and
+      // the border together. A separate border shape would have to be edited
+      // twice per panel, which is the whole reason not to use one.
+      var folders = drawn.map(function (l, i) {
+        // Bound the contents to the panel. A full-page buffer per layer would
+        // run to hundreds of megabytes on an A4 page at 300dpi.
+        var b = knotsBBox(l.knots);
+        var left = clamp(Math.floor(b.minX) - 1, 0, state.w);
+        var top = clamp(Math.floor(b.minY) - 1, 0, state.h);
+        var right = clamp(Math.ceil(b.maxX) + 1, 0, state.w);
+        var bottom = clamp(Math.ceil(b.maxY) + 1, 0, state.h);
+        var lw = right - left, lh = bottom - top;
+        if (lw < 1 || lh < 1) return null;
+
+        // The paper. Not decoration: a layer style traces the folder's alpha, so
+        // an empty folder would have no edge to draw a border along - and once
+        // drawing started the border would follow the brush strokes instead.
+        var paper = document.createElement('canvas');
+        paper.width = lw;
+        paper.height = lh;
+        var pctx = paper.getContext('2d');
+        pctx.fillStyle = state.fill;
+        pctx.fillRect(0, 0, lw, lh);
+
+        var blank = document.createElement('canvas');
+        blank.width = lw;
+        blank.height = lh;
+
+        var folder = {
+          name: '칸 ' + (i + 1),
+          opened: false,
+          vectorMask: {
+            paths: [{ open: false, fillRule: 'non-zero', operation: 'combine', knots: pathToPSD(l.knots) }]
+          },
+          children: [
+            { name: '바탕', top: top, left: left, bottom: bottom, right: right,
+              imageData: pctx.getImageData(0, 0, lw, lh) },
+            { name: '그림', top: top, left: left, bottom: bottom, right: right,
+              imageData: blank.getContext('2d').getImageData(0, 0, lw, lh) }
+          ]
+        };
+
+        // Inside alignment, not centre: the mask would eat the outer half of a
+        // centred stroke and the border would come out half as thick.
+        if (state.sw > 0) {
+          folder.effects = {
+            stroke: [{
+              enabled: true,
+              position: 'inside',
+              fillType: 'color',
+              blendMode: 'normal',
+              opacity: 1,
+              size: { units: 'Pixels', value: state.sw },
+              color: hexToRgb(state.stroke)
+            }]
+          };
+        }
+        return folder;
+      }).filter(Boolean);
+
+      // children run bottom to top, so reversing puts 칸 1 at the top of the
+      // layers palette - where the reader's eye starts
+      var psd = {
+        width: state.w,
+        height: state.h,
+        imageData: flatData,
+        children: folders.reverse()
+      };
+      save(new Blob([window.agPsd.writePsd(psd)], { type: 'image/vnd.adobe.photoshop' }), filename('psd'));
+      say('PSD 저장 완료 — 칸마다 폴더 하나씩, 안에 바탕과 그림 레이어가 들어 있습니다.');
+    } catch (err) {
+      say('PSD 생성 실패: ' + err.message);
+    }
+  });
+
+  document.getElementById('dl-svg').addEventListener('click', function () {
+    // Same inside-aligned border as the canvas, by the same means: stroke at
+    // twice the width and clip it to the panel it belongs to.
+    var defs = [], body = [];
+    view.panels.filter(function (l) { return l.knots; }).forEach(function (l, i) {
+      var d = pathToSVG(l.knots), id = i + 1;
+      body.push('  <path id="panel-' + id + '" d="' + d + '" fill="' + state.fill + '"/>');
+      if (state.sw > 0) {
+        defs.push('    <clipPath id="panel-clip-' + id + '"><path d="' + d + '"/></clipPath>');
+        body.push('  <path d="' + d + '" fill="none" stroke="' + state.stroke +
+                  '" stroke-width="' + (state.sw * 2) + '" stroke-linejoin="miter"' +
+                  ' stroke-miterlimit="10" clip-path="url(#panel-clip-' + id + ')"/>');
+      }
+    });
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + state.w +
+              '" height="' + state.h + '" viewBox="0 0 ' + state.w + ' ' + state.h + '">\n' +
+              (defs.length ? '  <defs>\n' + defs.join('\n') + '\n  </defs>\n' : '') +
+              body.join('\n') + '\n</svg>\n';
+    save(new Blob([svg], { type: 'image/svg+xml' }), filename('svg'));
+    say('SVG 저장 완료 — 포토샵에서 열면 래스터로 변환됩니다. 일러스트레이터용입니다.');
+  });
+
+  document.getElementById('dl-png').addEventListener('click', function () {
+    cleanCanvas().toBlob(function (blob) {
+      save(blob, filename('png'));
+      say('PNG 저장 완료.');
+    });
+  });
+
+  document.getElementById('copy-png').addEventListener('click', function () {
+    if (!navigator.clipboard || !window.ClipboardItem) {
+      say('이 브라우저에서는 클립보드 복사를 지원하지 않습니다. PNG 다운로드를 쓰세요.');
+      return;
+    }
+    cleanCanvas().toBlob(function (blob) {
+      navigator.clipboard.write([new window.ClipboardItem({ 'image/png': blob })])
+        .then(function () { say('PNG 복사 완료 — 포토샵에 픽셀로 붙습니다.'); })
+        .catch(function (e) { say('복사 실패: ' + e.message + ' (file://에서는 막힐 수 있습니다)'); });
+    });
+  });
+
+  // ══ UI ════════════════════════════════════════════════
+
+  function press(host, btn) {
+    Array.prototype.forEach.call(host.children, function (c) {
+      c.setAttribute('aria-pressed', String(c === btn));
+    });
+  }
+
+  function chips(host, entries, onPick, pressed) {
+    entries.forEach(function (e, i) {
+      var b = document.createElement('button');
+      b.className = 'chip';
+      b.type = 'button';
+      b.textContent = e[0];
+      b.setAttribute('aria-pressed', String(pressed === i));
+      b.addEventListener('click', function () {
+        press(host, b);
+        onPick(e, i);
+      });
+      host.appendChild(b);
+    });
+  }
+
+  var presetHost = document.getElementById('presets');
+  chips(presetHost, PRESETS, function (e) {
+    replaceTree(e[1]());
+    render();
+    say('');
+  }, 5);
+
+  var pageHost = document.getElementById('pages');
+  chips(pageHost, PAGES, function (e) {
+    state.w = e[1];
+    state.h = e[2];
+    slider.w.value = state.w;
+    slider.h.value = state.h;
+    document.getElementById('wv').textContent = state.w;
+    document.getElementById('hv').textContent = state.h;
+    render();
+  }, 1);
+
+  chips(document.getElementById('dirs'), [['위·아래', 'h'], ['좌·우', 'v']], function (e) {
+    state.dir = e[1];
+    render();
+  }, 0);
+
+  chips(document.getElementById('orders'), [['우 → 좌', true], ['좌 → 우', false]], function (e) {
+    state.rtl = e[1];
+    render();
+  }, 0);
+
+  // a plain on/off, not one of a set, so it toggles itself rather than going
+  // through the radio-style chips helper above
+  var numbersBtn = document.getElementById('numbers');
+  numbersBtn.addEventListener('click', function () {
+    state.numbers = !state.numbers;
+    numbersBtn.setAttribute('aria-pressed', String(state.numbers));
+    render();
+  });
+
+  var slider = {};
+  ['w', 'h', 'margin', 'gutter', 'sw', 'radius', 'count', 'dyn'].forEach(function (id) {
+    var el = document.getElementById(id);
+    slider[id] = el;
+    var out = document.getElementById(id + 'v');
+    el.addEventListener('input', function () {
+      state[id] = parseInt(el.value, 10);
+      out.textContent = el.value;
+      if (id === 'count' || id === 'dyn') regenerate();
+      else {
+        if (id === 'w' || id === 'h') press(pageHost, null);
+        render();
+      }
+    });
+  });
+
+  // Reaching for the auto controls replaces whatever is on the page, so it goes
+  // on the history stack like any other change.
+  function regenerate() {
+    var m = Math.min(state.margin, Math.min(state.w, state.h) / 2 - 10);
+    replaceTree(autoTree(state.count, state.dyn, state.seed, state.w - m * 2, state.h - m * 2));
+    press(presetHost, null);
+    render();
+  }
+
+  document.getElementById('reseed').addEventListener('click', function () {
+    state.seed = (Math.random() * 0x7fffffff) | 0;
+    regenerate();
+    say('');
+  });
+
+  document.getElementById('reset').addEventListener('click', function () {
+    replaceTree(leaf());
+    press(presetHost, presetHost.children[0]);
+    render();
+    say('');
+  });
+
+  undoBtn.addEventListener('click', undo);
+
+  ['fill', 'stroke'].forEach(function (id) {
+    document.getElementById(id).addEventListener('input', function (e) {
+      state[id] = e.target.value;
+      render();
+    });
+  });
+
+  // ══ Reference image ═══════════════════════════════════
+
+  var refOpts = document.getElementById('ref-opts');
+  var refClear = document.getElementById('ref-clear');
+  var refFile = document.getElementById('ref-file');
+
+  function loadRef(file) {
+    if (!file || !/^image\//.test(file.type)) {
+      say('이미지 파일만 불러올 수 있습니다.');
+      return;
+    }
+    var url = URL.createObjectURL(file);
+    var img = new Image();
+    img.onload = function () {
+      if (ref.url) URL.revokeObjectURL(ref.url);
+      ref.img = img;
+      ref.url = url;
+      refOpts.hidden = false;
+      refClear.hidden = false;
+      render();
+      say('참고 이미지 ' + img.naturalWidth + ' × ' + img.naturalHeight + ' px — 화면에만 보이고 저장되는 파일에는 들어가지 않습니다.');
+    };
+    img.onerror = function () {
+      URL.revokeObjectURL(url);
+      say('이미지를 읽지 못했습니다.');
+    };
+    img.src = url;
+  }
+
+  document.getElementById('ref-pick').addEventListener('click', function () { refFile.click(); });
+  refFile.addEventListener('change', function (e) {
+    loadRef(e.target.files && e.target.files[0]);
+    e.target.value = '';          // so picking the same file twice still fires
+  });
+
+  refClear.addEventListener('click', function () {
+    if (ref.url) URL.revokeObjectURL(ref.url);
+    ref.img = null;
+    ref.url = null;
+    refOpts.hidden = true;
+    refClear.hidden = true;
+    render();
+    say('참고 이미지를 지웠습니다.');
+  });
+
+  chips(document.getElementById('ref-fits'), [['맞춤', 'contain'], ['채움', 'cover'], ['원본', 'none']], function (e) {
+    state.refFit = e[1];
+    render();
+  }, 0);
+
+  document.getElementById('refop').addEventListener('input', function (e) {
+    state.refOpacity = parseInt(e.target.value, 10);
+    document.getElementById('refopv').textContent = e.target.value;
+    render();
+  });
+
+  document.getElementById('ref-size').addEventListener('click', function () {
+    if (!ref.img) return;
+    state.w = clamp(ref.img.naturalWidth, +slider.w.min, +slider.w.max);
+    state.h = clamp(ref.img.naturalHeight, +slider.h.min, +slider.h.max);
+    slider.w.value = state.w;
+    slider.h.value = state.h;
+    document.getElementById('wv').textContent = state.w;
+    document.getElementById('hv').textContent = state.h;
+    press(pageHost, null);
+    render();
+    say(state.w === ref.img.naturalWidth && state.h === ref.img.naturalHeight
+      ? '페이지를 이미지 크기에 맞췄습니다.'
+      : '페이지를 이미지 크기에 맞췄습니다 — 슬라이더 범위를 넘는 쪽은 잘렸습니다.');
+  });
+
+  // Drag a file anywhere over the page preview
+  var wrap = document.querySelector('.canvas-wrap');
+  ['dragenter', 'dragover'].forEach(function (t) {
+    wrap.addEventListener(t, function (e) {
+      e.preventDefault();
+      wrap.classList.add('dropping');
+    });
+  });
+  ['dragleave', 'drop'].forEach(function (t) {
+    wrap.addEventListener(t, function (e) {
+      e.preventDefault();
+      wrap.classList.remove('dropping');
+    });
+  });
+  wrap.addEventListener('drop', function (e) {
+    loadRef(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]);
+  });
+
+  var toggle = document.querySelector('.nav-toggle');
+  var nav = document.querySelector('#main-nav');
+  toggle.addEventListener('click', function () { nav.classList.toggle('open'); });
+
+  render();
+})();
+</script>
+</body>
+</html>
