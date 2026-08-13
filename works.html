@@ -88,6 +88,12 @@
       object-fit: contain;
       background: transparent;
     }
+    /* Every other logo carries its own clear space inside the file, so contain
+       leaves it sitting inside the card with room around it. This one was
+       trimmed to its artwork, so it ran edge to edge. 34px either side takes it
+       down by a fifth; with border-box the card keeps its height and the grid
+       stays aligned. */
+    .work-card img.inset { padding: 0 34px; }
     .work-card-body { padding: 20px 22px 22px; background: #111; flex: 1; }
     .work-card-body h3 { font-size: 16px; font-weight: 600; margin-bottom: 5px; }
     .work-card-body p { font-size: 12px; color: #777; letter-spacing: 0.03em; }
@@ -237,7 +243,7 @@
   </a>
   <a href="tobot.html" style="display:block">
     <div class="work-card">
-      <img src="post-images/1ab44f_d5c8dec12336418d806fb2a75e3b4124~mv2.png" alt="TOBOT" loading="lazy">
+      <img class="inset" src="post-images/TOBOT_LOGO.png" alt="TOBOT" loading="lazy">
       <div class="work-card-body">
         <h3>TOBOT</h3>
         <p>3D CGI Animated Series</p>

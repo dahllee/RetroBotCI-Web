@@ -71,14 +71,17 @@
       gap: 40px;
       flex-wrap: wrap;
     }
-    /* 180px, the height the sibling pages give their logos. The artwork sits
-       inside clear space in the file - 21px above, 8 below, 24 and 10 either
-       side, about two thirds of that once scaled down - which would otherwise
-       be added to the gaps around it; pulling all four back makes the gap set
-       the gap seen. */
+    /* The sibling pages set 180px, but this emblem is far narrower than their
+       wordmarks - 418x248 of artwork against ATHLON's 444x198 - so at a matched
+       height it came out 272px across where ATHLON's is 398, and read as small.
+       264px matches the two across instead, and is still under the file's own
+       277px, so nothing is enlarged past its resolution.
+       The artwork sits inside clear space in the file - 21px above, 8 below, 24
+       and 10 either side - which would otherwise be added to the gaps around
+       it; pulling all four back makes the gap set the gap seen. */
     .tobot-logo {
-      height: 180px; width: auto;
-      margin: -14px -7px -5px -16px;
+      height: 264px; width: auto;
+      margin: -20px -10px -8px -23px;
     }
     .info-list {
       list-style: none;

@@ -71,17 +71,13 @@
       gap: 40px;
       flex-wrap: wrap;
     }
-    /* This wordmark is wide and short, so it is sized across rather than down -
-       matched to the width of the logos on the sibling pages instead of their
-       height, which here would have left it a sliver. 380 against a 362px file
-       is near enough to native that nothing is resampled away.
-       The artwork sits inside clear space in the file - 62px above, 45 below,
-       3 and 6 either side, all a touch larger once scaled - which would be
-       added to the gaps around it; pulling all four back makes the gap set the
-       gap seen. */
+    /* Sized across rather than down, to the same 398px the logos on the sibling
+       pages come out at, so the three read as one set. The file is 800px wide
+       for high-density screens and carries no transparent border of its own, so
+       unlike those pages there is nothing here to pull back - the gap set is
+       the gap seen. */
     .tobot-logo {
-      width: 380px; height: auto;
-      margin: -65px -7px -47px -3px;
+      width: 398px; height: auto;
     }
     .info-list {
       list-style: none;
@@ -124,11 +120,8 @@
       object-fit: cover;
     }
 
-    /* Once the row wraps, the logo is above the text rather than beside it, so
-       the side pull that closed the gap between them now just knocks it off
-       centre. The vertical one still earns its keep. */
+    /* 48px leaves the title needing more width than a phone has. */
     @media (max-width: 640px) {
-      .tobot-logo { margin-left: 0; margin-right: 0; }
       .title-section h1 { font-size: 32px; }
       .title-section .year { font-size: 24px; }
     }
@@ -164,7 +157,7 @@
 <section class="title-section">
   <h1>TOBOT <span class="year">(2010-2015)</span></h1>
   <div class="work-head">
-    <img class="tobot-logo" src="post-images/1ab44f_d5c8dec12336418d806fb2a75e3b4124~mv2.png" alt="TOBOT Logo">
+    <img class="tobot-logo" src="post-images/TOBOT_LOGO.png" alt="TOBOT Logo">
     <ul class="info-list">
       <li>A TV series animation mainly targeting boys aged 4–7</li>
       <li>5 minutes × 414 episodes</li>
