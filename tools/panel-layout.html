@@ -210,21 +210,30 @@
       font-size: 11px; font-weight: 600; letter-spacing: 0.12em;
       text-transform: uppercase; color: #666;
     }
+    /* Flat, so it reads as the room the page sits in rather than as the page. */
     .canvas-wrap {
       flex: 1;
       display: flex; align-items: center; justify-content: center;
       border-radius: 4px;
-      /* light checkerboard: shows transparency, and a black outline reads on it */
+      background: #151515;
+      padding: 20px;
+      overflow: auto;
+    }
+    /* The checkerboard belongs to the page, not to the room. On the wrapper it
+       made the whole panel look like the document and hid where the paper
+       actually ended - which is the one thing a checkerboard is there to show.
+       Sized in CSS pixels, so the squares hold still while the page behind them
+       changes resolution. */
+    #preview {
+      max-width: 100%; max-height: 68vh; display: block; touch-action: none;
       background-color: #e9e9e9;
       background-image:
         linear-gradient(45deg, #cfcfcf 25%, transparent 25%, transparent 75%, #cfcfcf 75%),
         linear-gradient(45deg, #cfcfcf 25%, transparent 25%, transparent 75%, #cfcfcf 75%);
       background-size: 20px 20px;
       background-position: 0 0, 10px 10px;
-      padding: 20px;
-      overflow: auto;
+      box-shadow: 0 0 0 1px #3a3a3a, 0 6px 24px rgba(0,0,0,0.55);
     }
-    #preview { max-width: 100%; max-height: 68vh; display: block; touch-action: none; }
     .meta { font-size: 12px; color: #555; letter-spacing: 0.04em; }
     .actions { display: flex; gap: 10px; flex-wrap: wrap; }
     .note {
@@ -304,9 +313,19 @@
       <div class="chips row" id="presets"></div>
     </div>
 
+    <!-- Two kinds of page, and they are not the same kind of thing. A printed
+         page is a physical size and the resolution decides how many pixels that
+         comes to; a screen page is a pixel count and has no physical size at
+         all. Keeping them in one list is what made the resolution look like a
+         setting that always applies. -->
     <div class="field">
-      <label>판형</label>
-      <div class="chips row" id="pages"></div>
+      <label>인쇄용</label>
+      <div class="chips row" id="print-pages"></div>
+    </div>
+
+    <div class="field">
+      <label>화면용</label>
+      <div class="chips row" id="screen-pages"></div>
     </div>
   </div>
 
@@ -327,30 +346,42 @@
       </div>
 
       <div class="field">
-        <label for="w">가로 <span class="val" id="wv">1240</span> px</label>
-        <!-- step 1, because a coarser one puts half the 판형 presets between two
+        <label>단위</label>
+        <div class="chips row" id="units"></div>
+      </div>
+      <div class="field">
+        <!-- step 1, because a coarser one puts half the presets between two
              notches and the slider snaps them off the moment it is touched -->
-        <input type="range" id="w" min="300" max="3600" step="1" value="1240">
+        <label for="w">가로 <span class="val" id="wv">210</span> <span class="unit-label">mm</span></label>
+        <input type="range" id="w" min="40" max="600" step="1" value="210">
       </div>
       <div class="field">
-        <label for="h">세로 <span class="val" id="hv">1754</span> px</label>
-        <input type="range" id="h" min="300" max="4800" step="1" value="1754">
+        <label for="h">세로 <span class="val" id="hv">297</span> <span class="unit-label">mm</span></label>
+        <input type="range" id="h" min="40" max="800" step="1" value="297">
+      </div>
+      <!-- Only shown in mm. A page measured in pixels has no resolution worth
+           choosing, and offering the choice would say otherwise. -->
+      <div class="field" id="dpi-field">
+        <label>해상도</label>
+        <div class="chips row" id="dpis"></div>
       </div>
       <div class="field">
-        <label for="margin">바깥 여백 <span class="val" id="marginv">70</span> px</label>
-        <input type="range" id="margin" min="0" max="300" step="5" value="70">
+        <!-- Defaults are sized for the default page, A4 at 300dpi: roughly 12mm
+             of margin, a 4.7mm gutter and a 0.85mm border. -->
+        <label for="margin">바깥 여백 <span class="val" id="marginv">140</span> px</label>
+        <input type="range" id="margin" min="0" max="600" step="5" value="140">
       </div>
       <div class="field">
-        <label for="gutter">칸 간격 <span class="val" id="gutterv">28</span> px</label>
-        <input type="range" id="gutter" min="0" max="160" step="2" value="28">
+        <label for="gutter">칸 간격 <span class="val" id="gutterv">56</span> px</label>
+        <input type="range" id="gutter" min="0" max="320" step="2" value="56">
       </div>
       <div class="field">
-        <label for="sw">테두리 두께 <span class="val" id="swv">5</span> px</label>
-        <input type="range" id="sw" min="0" max="40" step="1" value="5">
+        <label for="sw">테두리 두께 <span class="val" id="swv">10</span> px</label>
+        <input type="range" id="sw" min="0" max="80" step="1" value="10">
       </div>
       <div class="field">
         <label for="radius">모서리 둥글기 <span class="val" id="radiusv">0</span> px</label>
-        <input type="range" id="radius" min="0" max="80" step="1" value="0">
+        <input type="range" id="radius" min="0" max="160" step="1" value="0">
       </div>
 
       <p class="group">자동 배치</p>
@@ -924,14 +955,33 @@
     }]
   ];
 
-  var PAGES = [
-    ['A4 300dpi', 2480, 3508],
-    ['A4 150dpi', 1240, 1754],
-    ['국판 300dpi', 1748, 2480],
-    ['정사각', 1500, 1500],
-    ['웹툰 세로', 800, 2400],
-    ['와이드', 1920, 1080]
+  // Each page carries the resolution it was measured at, so picking a 판형 sets
+  // both. The screen-bound ones are 72 - a webtoon strip has no print size.
+  // Printed pages are named by the size the book comes out at once it has been
+  // trimmed - that is what a 판형 means - and the resolution below turns that
+  // into a pixel count.
+  var PRINT_PAGES = [
+    ['A4 210×297', 210, 297],
+    ['B5 182×257', 182, 257],
+    ['국판 148×210', 148, 210],
+    ['신국판 152×225', 152, 225]
   ];
+
+  // Screen pages are the other kind: pixels are the real measurement and the
+  // millimetres would be made up.
+  var SCREEN_PAGES = [
+    ['웹툰 800×2400', 800, 2400],
+    ['와이드 1920×1080', 1920, 1080],
+    ['정사각 1500', 1500, 1500]
+  ];
+
+  // 600 for monochrome line art, 300 for colour. No 150 - it is a draft
+  // resolution and nothing here needs drafting at half size when the layout is
+  // vector. No 72 either: that is not a print resolution, it is what a page
+  // measured in pixels gets written out as.
+  var DPIS = [['300', 300], ['600', 600]];
+  var SCREEN_DPI = 72;
+  var MM_PER_INCH = 25.4;
 
   // ══ Auto layout ═══════════════════════════════════════
 
@@ -977,7 +1027,11 @@
   // ══ State ═════════════════════════════════════════════
 
   var state = {
-    w: 1240, h: 1754, margin: 70, gutter: 28, sw: 5, radius: 0,
+    // w/h are always the pixel size everything else is drawn and exported at.
+    // In mm they are derived from mmW/mmH and the resolution; in px they are
+    // what the sliders set directly.
+    unit: 'mm', mmW: 210, mmH: 297, dpi: 300,
+    w: 2480, h: 3508, margin: 140, gutter: 56, sw: 10, radius: 0,
     fill: '#ffffff', stroke: '#000000',
     dir: 'h', rtl: true, numbers: false, count: 6, dyn: 40, seed: 7,
     refFit: 'contain', refOpacity: 50
@@ -1001,6 +1055,18 @@
   var drag = null;
 
   function say(msg) { status.textContent = msg; }
+
+  function mmToPx(mm) { return Math.round(mm / MM_PER_INCH * state.dpi); }
+  function pxToMm(px) { return Math.round(px / state.dpi * MM_PER_INCH); }
+
+  // In mm the physical size is what was chosen and the pixels follow from it -
+  // so raising the resolution grows the page in pixels and leaves the book the
+  // same size, which is what a resolution is for.
+  function syncPage() {
+    if (state.unit !== 'mm') return;
+    state.w = mmToPx(state.mmW);
+    state.h = mmToPx(state.mmH);
+  }
 
   function push() {
     history.push({
@@ -1169,7 +1235,14 @@
     var anchors = view.panels.reduce(function (n, p) { return n + (p.knots ? p.knots.length : 0); }, 0);
     var lost = view.panels.filter(function (p) { return !p.knots; }).length;
     var joined = view.panels.filter(function (p) { return p.merged; }).length;
-    meta.textContent = state.w + ' × ' + state.h + ' px · ' + view.panels.length + '칸 · ' +
+    var size = state.unit === 'mm'
+      ? state.mmW + ' × ' + state.mmH + ' mm · ' + state.dpi + 'dpi · ' + state.w + ' × ' + state.h + ' px'
+      : state.w + ' × ' + state.h + ' px · ' + state.dpi + 'dpi';
+    // Two pages of the same shape but different sizes are both fitted to the
+    // same box, so without this the difference between A4 and 국판 never
+    // reaches the screen.
+    var zoom = Math.round(100 / viewScale());
+    meta.textContent = size + ' · ' + zoom + '% · ' + view.panels.length + '칸 · ' +
                        anchors + ' anchor points' +
                        (joined ? ' · 합친 칸 ' + joined + '개' : '') +
                        (lost ? ' · ' + lost + '칸은 간격에 눌려 사라졌습니다' : '') +
@@ -1651,6 +1724,15 @@
         width: state.w,
         height: state.h,
         imageData: flatData,
+        // Without this Photoshop calls the page 72dpi and prints it four times
+        // too big. The border size is in pixels either way, so nothing else
+        // moves when this changes.
+        imageResources: {
+          resolutionInfo: {
+            horizontalResolution: state.dpi, horizontalResolutionUnit: 'PPI', widthUnit: 'Inches',
+            verticalResolution: state.dpi, verticalResolutionUnit: 'PPI', heightUnit: 'Inches'
+          }
+        },
         children: folders.reverse()
       };
       save(new Blob([window.agPsd.writePsd(psd)], { type: 'image/vnd.adobe.photoshop' }), filename('psd'));
@@ -1731,16 +1813,120 @@
     say('');
   }, 5);
 
-  var pageHost = document.getElementById('pages');
-  chips(pageHost, PAGES, function (e) {
+  var printHost = document.getElementById('print-pages');
+  var screenHost = document.getElementById('screen-pages');
+  var dpiHost = document.getElementById('dpis');
+  var unitHost = document.getElementById('units');
+  var dpiField = document.getElementById('dpi-field');
+
+  // The two size sliders swap what they measure, so their bounds and labels
+  // travel with the unit rather than being written once in the markup.
+  var SIZE_RANGE = {
+    mm: { w: [40, 600], h: [40, 800] },
+    px: { w: [300, 6000], h: [300, 8000] }
+  };
+
+  function showSize() {
+    var r = SIZE_RANGE[state.unit];
+    [['w', state.unit === 'mm' ? state.mmW : state.w],
+     ['h', state.unit === 'mm' ? state.mmH : state.h]].forEach(function (pair) {
+      var el = slider[pair[0]];
+      el.min = r[pair[0]][0];
+      el.max = r[pair[0]][1];
+      el.value = pair[1];
+      document.getElementById(pair[0] + 'v').textContent = pair[1];
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.unit-label'), function (s) {
+      s.textContent = state.unit;
+    });
+    dpiField.hidden = state.unit !== 'mm';
+    press(dpiHost, dpiHost.children[DPIS.map(function (d) { return d[1]; }).indexOf(state.dpi)]);
+  }
+
+  // Everything measured in pixels - margins, gutters, the border - has to grow
+  // with the resolution, or raising it would quietly halve the design while the
+  // page itself stayed the same size on paper.
+  var METRIC_BASE = { margin: [0, 600, 5], gutter: [0, 320, 2], sw: [0, 80, 1], radius: [0, 160, 1] };
+
+  function showMetrics() {
+    var k = state.unit === 'mm' ? state.dpi / 300 : 1;
+    Object.keys(METRIC_BASE).forEach(function (id) {
+      var b = METRIC_BASE[id], el = slider[id];
+      el.min = b[0];
+      el.max = Math.round(b[1] * k);
+      el.step = b[2];
+      el.value = state[id];
+      document.getElementById(id + 'v').textContent = state[id];
+    });
+  }
+
+  function setDpi(next) {
+    var k = next / state.dpi;
+    state.dpi = next;
+    Object.keys(METRIC_BASE).forEach(function (id) {
+      state[id] = Math.round(state[id] * k);
+    });
+    syncPage();
+    showSize();
+    showMetrics();
+    render();
+  }
+
+  chips(printHost, PRINT_PAGES, function (e) {
+    state.unit = 'mm';
+    state.mmW = e[1];
+    state.mmH = e[2];
+    // Coming back from a screen page, the resolution is still the 72 that page
+    // was written out at. Left alone it would turn A4 into 595 pixels across.
+    if (state.dpi === SCREEN_DPI) state.dpi = 300;
+    press(screenHost, null);
+    press(unitHost, unitHost.children[0]);
+    syncPage();
+    showSize();
+    showMetrics();
+    render();
+  }, 0);
+
+  chips(screenHost, SCREEN_PAGES, function (e) {
+    // The margins are left exactly as they are. Scaling them to the new page
+    // sounds helpful but there is nothing to scale by: a printed page and a
+    // screen page share no measurement. Going by the ratio of pixel widths
+    // makes the numbers depend on the route taken rather than on where they
+    // ended up, and they shrink a little more on every visit. Better to leave
+    // them alone and let the slider say what it says.
+    state.unit = 'px';
     state.w = e[1];
     state.h = e[2];
-    slider.w.value = state.w;
-    slider.h.value = state.h;
-    document.getElementById('wv').textContent = state.w;
-    document.getElementById('hv').textContent = state.h;
+    state.dpi = SCREEN_DPI;
+    press(printHost, null);
+    press(unitHost, unitHost.children[1]);
+    showSize();
+    showMetrics();
     render();
-  }, 1);
+  }, -1);
+
+  chips(dpiHost, DPIS, function (e) { setDpi(e[1]); }, 0);
+
+  // Switching by hand keeps the page the same size on screen and only changes
+  // which number you steer it with. Going back to mm needs a print resolution to
+  // measure against, so it picks one up rather than keeping the screen's 72.
+  chips(unitHost, [['mm', 'mm'], ['px', 'px']], function (e) {
+    if (e[1] === state.unit) return;
+    if (e[1] === 'px') {
+      state.unit = 'px';
+      press(printHost, null);
+    } else {
+      state.unit = 'mm';
+      if (state.dpi === SCREEN_DPI) state.dpi = 300;
+      state.mmW = clamp(pxToMm(state.w), SIZE_RANGE.mm.w[0], SIZE_RANGE.mm.w[1]);
+      state.mmH = clamp(pxToMm(state.h), SIZE_RANGE.mm.h[0], SIZE_RANGE.mm.h[1]);
+      syncPage();
+      press(screenHost, null);
+    }
+    showSize();
+    showMetrics();
+    render();
+  }, 0);
 
   chips(document.getElementById('dirs'), [['위·아래', 'h'], ['좌·우', 'v']], function (e) {
     state.dir = e[1];
@@ -1767,13 +1953,20 @@
     slider[id] = el;
     var out = document.getElementById(id + 'v');
     el.addEventListener('input', function () {
-      state[id] = parseInt(el.value, 10);
+      var v = parseInt(el.value, 10);
       out.textContent = el.value;
-      if (id === 'count' || id === 'dyn') regenerate();
-      else {
-        if (id === 'w' || id === 'h') press(pageHost, null);
-        render();
+      if (id === 'count' || id === 'dyn') { state[id] = v; regenerate(); return; }
+      if (id === 'w' || id === 'h') {
+        // in mm the slider sets the physical size and the pixels follow
+        if (state.unit === 'mm') { state[id === 'w' ? 'mmW' : 'mmH'] = v; syncPage(); }
+        else state[id] = v;
+        // no preset matches a size typed by hand
+        press(printHost, null);
+        press(screenHost, null);
+      } else {
+        state[id] = v;
       }
+      render();
     });
   });
 
@@ -1866,13 +2059,15 @@
 
   document.getElementById('ref-size').addEventListener('click', function () {
     if (!ref.img) return;
-    state.w = clamp(ref.img.naturalWidth, +slider.w.min, +slider.w.max);
-    state.h = clamp(ref.img.naturalHeight, +slider.h.min, +slider.h.max);
-    slider.w.value = state.w;
-    slider.h.value = state.h;
-    document.getElementById('wv').textContent = state.w;
-    document.getElementById('hv').textContent = state.h;
-    press(pageHost, null);
+    // a thumbnail is measured in pixels, so this is a pixel-first page
+    state.unit = 'px';
+    state.w = clamp(ref.img.naturalWidth, SIZE_RANGE.px.w[0], SIZE_RANGE.px.w[1]);
+    state.h = clamp(ref.img.naturalHeight, SIZE_RANGE.px.h[0], SIZE_RANGE.px.h[1]);
+    press(printHost, null);
+    press(screenHost, null);
+    press(unitHost, unitHost.children[1]);
+    showSize();
+    showMetrics();
     render();
     say(state.w === ref.img.naturalWidth && state.h === ref.img.naturalHeight
       ? '페이지를 이미지 크기에 맞췄습니다.'
@@ -1897,10 +2092,17 @@
     loadRef(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]);
   });
 
+  // The page is fitted to whatever room the window leaves, so the zoom reading
+  // goes stale the moment the window changes size.
+  window.addEventListener('resize', function () { render(); });
+
   var toggle = document.querySelector('.nav-toggle');
   var nav = document.querySelector('#main-nav');
   toggle.addEventListener('click', function () { nav.classList.toggle('open'); });
 
+  syncPage();
+  showSize();
+  showMetrics();
   render();
 })();
 </script>
