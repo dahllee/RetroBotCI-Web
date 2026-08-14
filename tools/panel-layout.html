@@ -1413,6 +1413,65 @@
     return null;
   }
 
+  // ── Holding the other borders still ──────────────────────
+  // A cut remembers where it sits as a fraction of the region it divides, which
+  // means shrinking that region drags everything inside it along: pull the top
+  // border of a three-tier page down and the border below it slides too, though
+  // nobody touched it. So a drag records where every border actually is, and
+  // after each move rewrites the fractions of the ones it did not touch to put
+  // them back where they were.
+
+  function cutAxis(node, bb) {
+    return node.dir === 'v' ? bb.x + node.at * bb.w : bb.y + node.at * bb.h;
+  }
+
+  function readCuts(node, poly, out) {
+    if (isLeaf(node)) return out;
+    var bb = polyBBox(poly);
+    out[node.id] = cutAxis(node, bb);
+    var r = cutRegion(poly, node.dir, node.at, node.tilt);
+    if (r) { readCuts(node.a, r.A, out); readCuts(node.b, r.B, out); }
+    return out;
+  }
+
+  function holdCuts(node, poly, want, moving) {
+    if (isLeaf(node)) return;
+    var bb = polyBBox(poly);
+    if (node !== moving && want[node.id] !== undefined && bb.w > 0 && bb.h > 0) {
+      var at = node.dir === 'v' ? (want[node.id] - bb.x) / bb.w : (want[node.id] - bb.y) / bb.h;
+      node.at = clamp(at, 0.02, 0.98);
+    }
+    var r = cutRegion(poly, node.dir, node.at, node.tilt);
+    if (r) { holdCuts(node.a, r.A, want, moving); holdCuts(node.b, r.B, want, moving); }
+  }
+
+  function readAts(node, out) {
+    if (isLeaf(node)) return out;
+    out[node.id] = node.at;
+    readAts(node.a, out);
+    readAts(node.b, out);
+    return out;
+  }
+
+  function writeAts(node, src) {
+    if (isLeaf(node)) return;
+    if (src[node.id] !== undefined) node.at = src[node.id];
+    writeAts(node.a, src);
+    writeAts(node.b, src);
+  }
+
+  // The narrowest panel on the page, so a drag can be stopped before it presses
+  // one flat rather than letting it reach nothing at all.
+  function tightestPanel() {
+    var leaves = [], cuts = [], least = Infinity;
+    walkTree(tree, rootPoly(), leaves, cuts, state.rtl);
+    leaves.forEach(function (l) {
+      var bb = polyBBox(l.poly);
+      least = Math.min(least, bb.w, bb.h);
+    });
+    return least;
+  }
+
   // Would these two make one straight-sided panel? Asked of the regions as they
   // are now, so it stays true after cuts have been dragged around.
   function canMerge(id, target) {
@@ -1429,6 +1488,10 @@
     if (drag) {
       var bb = polyBBox(drag.entry.parent);
       var node = drag.entry.node;
+      var undoAts = readAts(tree, {});
+      var wasTight = tightestPanel();
+      var tiltBefore = node.tilt;
+
       if (e.altKey) {
         // aim the line at the cursor, keeping it pinned where it already sits
         var cx = node.dir === 'v' ? bb.x + node.at * bb.w : bb.x + bb.w / 2;
@@ -1444,6 +1507,17 @@
         }
       } else {
         node.at = clamp(node.dir === 'v' ? (p[0] - bb.x) / bb.w : (p[1] - bb.y) / bb.h, 0.05, 0.95);
+      }
+      holdCuts(tree, rootPoly(), drag.want, node);
+
+      // Refuse a move that squeezes a panel flat - but only judge it against
+      // where it already was, so a page that starts out tight can still be
+      // worked on as long as the drag is not making it worse.
+      var least = state.gutter + 20;
+      var nowTight = tightestPanel();
+      if (nowTight < least && nowTight < wasTight) {
+        writeAts(tree, undoAts);
+        node.tilt = tiltBefore;
       }
       render();
       return;
@@ -1478,7 +1552,8 @@
     if (!cu) return;
     e.preventDefault();
     push();
-    drag = { entry: cu, moved: false };
+    // where every other border stands right now, to be put back after each move
+    drag = { entry: cu, moved: false, want: readCuts(tree, rootPoly(), {}) };
     say('경계선을 옮기는 중 — Alt를 누르면 기울어집니다.');
   });
 
