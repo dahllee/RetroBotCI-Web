@@ -451,14 +451,14 @@
       <p id="status"></p>
       <p class="note">
         칸 안을 <strong>클릭</strong>하면 그 자리에서 갈라집니다. <kbd>Alt</kbd>를 누른 채 클릭하면 반대 방향으로 갈라집니다.
-        경계선을 <strong>드래그</strong>하면 그 선이 움직이고, <kbd>Shift</kbd>를 같이 누르면 선이 기울어집니다.
+        경계선을 <strong>드래그</strong>하면 그 선이 움직이고, <kbd>Alt</kbd>를 같이 누르면 선이 기울어집니다.
         <kbd>Ctrl</kbd>+<kbd>Z</kbd>로 되돌립니다.
       </p>
       <p class="note">
-        <strong>오른쪽 클릭</strong>은 칸을 집어 드는 것까지만 합니다. 집어 든 뒤에 합칠 칸을 하나 더 클릭하면 둘이 한 칸이 되는데,
-        <strong>초록으로 물드는 칸</strong>만 됩니다 — 변을 맞대고 있어 한 덩어리가 되는 칸입니다.
+        칸 합치기는 <strong>오른쪽 클릭</strong> 두 번입니다. 한 번은 칸을 선택하고, 두 번째로 합칠 칸을 오른쪽 클릭하면 둘이 한 칸이 됩니다.
+        <strong>초록으로 물드는 칸</strong>만 되는데, 변을 맞대고 있어 한 덩어리가 되는 칸입니다.
         <strong>ㄱ자·ㄷ자</strong>처럼 꺾인 칸도 되고, 합친 칸에 또 붙여 계속 키울 수도 있습니다.
-        집어 든 상태에서 <kbd>Delete</kbd>는 그 칸을 지우고, <kbd>Esc</kbd>는 선택을 놓습니다.
+        칸을 선택한 상태에서 <kbd>Esc</kbd>나 왼쪽 클릭은 선택을 해제합니다.
         합친 칸을 오른쪽 클릭하면 도로 풀립니다.
       </p>
       <p class="note">
@@ -905,12 +905,6 @@
     return { id: n.id, dir: n.dir, at: n.at, tilt: n.tilt, a: cloneTree(n.a), b: cloneTree(n.b) };
   }
 
-  function findParent(node, child) {
-    if (isLeaf(node)) return null;
-    if (node.a === child || node.b === child) return node;
-    return findParent(node.a, child) || findParent(node.b, child);
-  }
-
   // Reading order falls out of the walk: a horizontal cut is always top first,
   // and a vertical one starts on whichever side the reader starts on.
   function walkTree(node, poly, leaves, cuts, rtl) {
@@ -935,17 +929,27 @@
   function grid(r, c) { return r <= 1 ? cols(c) : cut('h', 1 / r, cols(c), grid(r - 1, c)); }
 
   var PRESETS = [
+    // Named the way a page is described out loud: 칸 is how many across a tier
+    // runs, 단 is how many tiers down. A plain grid says both, and the ones that
+    // are not grids say what they are instead.
     ['1칸', function () { return leaf(); }],
-    ['2단', function () { return rows(2); }],
-    ['3단', function () { return rows(3); }],
-    ['4단', function () { return rows(4); }],
-    ['2×2', function () { return grid(2, 2); }],
-    ['3행 2열', function () { return grid(3, 2); }],
-    ['4행 2열', function () { return grid(4, 2); }],
-    ['상1 하2', function () { return cut('h', 0.5, leaf(), cols(2)); }],
-    ['상2 하1', function () { return cut('h', 0.5, cols(2), leaf()); }],
-    ['좌1 우2', function () { return cut('v', 0.5, leaf(), rows(2)); }],
+    ['1칸 2단', function () { return rows(2); }],
+    ['1칸 3단', function () { return rows(3); }],
+    ['1칸 4단', function () { return rows(4); }],
+    ['2칸 2단', function () { return grid(2, 2); }],
+    ['2칸 3단', function () { return grid(3, 2); }],
+    ['2칸 4단', function () { return grid(4, 2); }],
+    ['1칸 + 2칸', function () { return cut('h', 0.5, leaf(), cols(2)); }],
+    ['2칸 + 1칸', function () { return cut('h', 0.5, cols(2), leaf()); }],
+    // The big panel takes half against two tiers and a little under half against
+    // three, so it stays clearly the larger of the two either way. Each pair is
+    // the same split read from the other end of the page.
+    ['큰칸 + 2단', function () { return cut('h', 0.5, leaf(), rows(2)); }],
+    ['2단 + 큰칸', function () { return cut('h', 0.5, rows(2), leaf()); }],
     ['큰칸 + 3단', function () { return cut('h', 0.46, leaf(), rows(3)); }],
+    ['3단 + 큰칸', function () { return cut('h', 0.54, rows(3), leaf()); }],
+    ['좌1칸 + 우2칸', function () { return cut('v', 0.5, leaf(), rows(2)); }],
+    ['좌2칸 + 우1칸', function () { return cut('v', 0.5, rows(2), leaf()); }],
     ['역동 3칸', function () { return cut('h', 0.4, leaf(), cut('v', 0.45, leaf(), leaf(), 9), -7); }],
     ['역동 5칸', function () {
       return cut('h', 0.36,
@@ -1277,7 +1281,7 @@
   function paintOverlay(c) {
     var s = viewScale();
 
-    // While a panel is held for merging, the page stops offering to cut and
+    // While a panel is selected for merging, the page stops offering to cut and
     // starts answering one question instead: can this one join it?
     if (selected !== null) {
       var held = panelWithId(selected);
@@ -1425,7 +1429,7 @@
     if (drag) {
       var bb = polyBBox(drag.entry.parent);
       var node = drag.entry.node;
-      if (e.shiftKey) {
+      if (e.altKey) {
         // aim the line at the cursor, keeping it pinned where it already sits
         var cx = node.dir === 'v' ? bb.x + node.at * bb.w : bb.x + bb.w / 2;
         var cy = node.dir === 'v' ? bb.y + bb.h / 2 : bb.y + node.at * bb.h;
@@ -1475,7 +1479,7 @@
     e.preventDefault();
     push();
     drag = { entry: cu, moved: false };
-    say('경계선을 옮기는 중 — Shift를 누르면 기울어집니다.');
+    say('경계선을 옮기는 중 — Alt를 누르면 기울어집니다.');
   });
 
   window.addEventListener('mouseup', function () {
@@ -1490,9 +1494,12 @@
     var p = toPage(e);
     var pn = panelAt(p[0], p[1]);
 
+    // Merging is a right-click gesture from start to finish, so a left click
+    // while a panel is selected means the other thing - backing out of it.
     if (selected !== null) {
-      if (pn) doMerge(pn);
-      else { selected = null; render(); say('선택을 취소했습니다.'); }
+      selected = null;
+      render();
+      say('선택을 취소했습니다.');
       return;
     }
 
@@ -1505,24 +1512,26 @@
     splitLeaf(pn, p[0], p[1], e.altKey ? (state.dir === 'h' ? 'v' : 'h') : state.dir);
   });
 
-  // Right-click no longer does anything on its own: it picks a panel up, and the
-  // next click decides what happens to it. Nothing is destroyed by one gesture.
+  // The whole merge happens on this button: one right-click selects a panel,
+  // the next says what to join it to. Nothing is destroyed by a single gesture,
+  // and the left button is never part of it.
   canvas.addEventListener('contextmenu', function (e) {
     e.preventDefault();
-    if (selected !== null) {
-      selected = null;
-      render();
-      say('선택을 취소했습니다.');
-      return;
-    }
     var p = toPage(e);
     var pn = panelAt(p[0], p[1]);
+
+    if (selected !== null) {
+      if (pn) doMerge(pn);
+      else { selected = null; render(); say('선택을 취소했습니다.'); }
+      return;
+    }
+
     if (!pn) return;
     if (pn.merged) { unmerge(pn); return; }
     selected = pn.ids[0];
     hover.cut = null;
     render();
-    say('합칠 칸을 하나 더 클릭하세요. 초록으로 물드는 칸만 됩니다 — Esc 취소, Delete 이 칸 지우기.');
+    say('합칠 칸을 하나 더 오른쪽 클릭하세요. 초록으로 물드는 칸만 됩니다 — Esc로 취소.');
   });
 
   function doMerge(target) {
@@ -1578,30 +1587,11 @@
     say('');
   }
 
-  // Removing a panel removes the cut that made it, and whatever was on the other
-  // side of that cut - one panel or a whole nest of them - takes the space back.
-  // Which neighbour that is depends on the order the page was cut in, so this is
-  // no longer on a single click: it takes selecting the panel first.
-  function dropLeaf(entry) {
-    if (!entry.node) { say('합친 칸은 먼저 풀어 주세요.'); return; }
-    var parent = findParent(tree, entry.node);
-    if (!parent) { say('마지막 한 칸은 지울 수 없습니다.'); return; }
-    var sib = parent.a === entry.node ? parent.b : parent.a;
-    push();
-    if (isLeaf(sib)) {
-      delete parent.dir; delete parent.at; delete parent.tilt;
-      delete parent.a; delete parent.b;
-    } else {
-      parent.dir = sib.dir; parent.at = sib.at; parent.tilt = sib.tilt;
-      parent.a = sib.a; parent.b = sib.b;
-    }
-    // the panel is gone, so any merge that named it is gone with it
-    groups = groups.filter(function (g) { return g.indexOf(entry.node.id) < 0; });
-    selected = null;
-    hover.panel = null; hover.cut = null;
-    render();
-    say('칸을 지웠습니다.');
-  }
+  // There is deliberately no way to delete a panel here. Where the neighbour was
+  // a single panel it did the same thing as merging the two, and where it was a
+  // nest of them it handed the space to whichever branch the page happened to
+  // have been cut along - which nothing on screen could tell you in advance.
+  // Photoshop can take a panel out afterwards; this only has to lay them down.
 
   window.addEventListener('keydown', function (e) {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
@@ -1613,12 +1603,6 @@
       selected = null;
       render();
       say('선택을 취소했습니다.');
-      return;
-    }
-    if ((e.key === 'Delete' || e.key === 'Backspace') && selected !== null) {
-      e.preventDefault();
-      var pn = panelWithId(selected);
-      if (pn) dropLeaf(pn);
     }
   });
 
@@ -1807,6 +1791,7 @@
   }
 
   var presetHost = document.getElementById('presets');
+  // 5 is 2칸 3단, which is the tree the page starts on
   chips(presetHost, PRESETS, function (e) {
     replaceTree(e[1]());
     render();
@@ -1987,6 +1972,7 @@
 
   document.getElementById('reset').addEventListener('click', function () {
     replaceTree(leaf());
+    // this is exactly the 1칸 preset, so light it
     press(presetHost, presetHost.children[0]);
     render();
     say('');
