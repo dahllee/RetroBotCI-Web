@@ -452,6 +452,7 @@
       <p class="note">
         칸 안을 <strong>클릭</strong>하면 그 자리에서 갈라집니다. <kbd>Alt</kbd>를 누른 채 클릭하면 반대 방향으로 갈라집니다.
         경계선을 <strong>드래그</strong>하면 그 선이 통째로 움직이고, 선이 만나는 <strong>꼭짓점</strong>을 드래그하면 거기 모인 선들이 기울어집니다.
+        <kbd>Alt</kbd>를 누른 채 경계선을 끌면 <strong>잡은 조각만</strong> 떨어져 나와, 한 단만 옆으로 어긋난 배치를 만들 수 있습니다.
         <kbd>Ctrl</kbd>+<kbd>Z</kbd>로 되돌립니다.
       </p>
       <p class="note">
@@ -1078,6 +1079,11 @@
         var a = f.vs[i], b = f.vs[(i + 1) % f.vs.length];
         var k = Math.min(a, b) + '-' + Math.max(a, b);
         if (seen[k] || !edgeShared(m, f, i)) continue;
+        // Two vertices left sitting on top of each other make an edge of no
+        // length and no direction, which would then count as parallel to
+        // everything and glue unrelated borders into one.
+        var p = m.verts[a], q = m.verts[b];
+        if (Math.hypot(q[0] - p[0], q[1] - p[1]) < 1e-6) continue;
         seen[k] = true;
         segs.push({ a: a, b: b });
       }
@@ -1110,6 +1116,78 @@
       runs.push({ segs: mine, list: Object.keys(on).map(Number), dir: d0 });
     }
     return runs;
+  }
+
+  // ── taking one segment out of a border ──────────────────
+  // A border is one line only because its pieces share the vertices where they
+  // meet. Duplicating those vertices - one copy for the piece being moved, one
+  // for the rest - is what lets a single tier step sideways while the tier lines
+  // it crosses stay whole. Both copies then slide along those tier lines, so
+  // nothing they cross is bent.
+
+  function facesAlong(m, a, b) {
+    return m.faces.filter(function (f) {
+      for (var i = 0; i < f.vs.length; i++) {
+        var p = f.vs[i], q = f.vs[(i + 1) % f.vs.length];
+        if ((p === a && q === b) || (p === b && q === a)) return true;
+      }
+      return false;
+    });
+  }
+
+  function detachSegment(m, seg, run) {
+    var shared = [seg.a, seg.b].filter(function (vi) {
+      return run.segs.some(function (s) { return s !== seg && (s.a === vi || s.b === vi); });
+    });
+    if (!shared.length) return null;                 // already on its own
+    var sides = facesAlong(m, seg.a, seg.b);
+    if (sides.length !== 2) return null;
+
+    var out = { a: seg.a, b: seg.b, touched: [] };
+    shared.forEach(function (vi) {
+      var copy = m.verts.length;
+      m.verts.push([m.verts[vi][0], m.verts[vi][1]]);
+      sides.forEach(function (f) {
+        f.vs = f.vs.map(function (k) { return k === vi ? copy : k; });
+      });
+      if (out.a === vi) out.a = copy;
+      if (out.b === vi) out.b = copy;
+      out.touched.push(copy, vi);
+      // the copy lands exactly on the original, so every face that carried the
+      // original on its boundary has to carry the copy too
+      insertOnEdges(m, copy);
+      insertOnEdges(m, vi);
+    });
+    return out;
+  }
+
+  // After anything moves, a vertex may have come to rest on a face it was not
+  // part of. Taking them all up again is cheap at this size and saves having to
+  // work out which ones could have changed.
+  function repairMesh(m) {
+    for (var i = 0; i < m.verts.length; i++) insertOnEdges(m, i);
+  }
+
+  // Two vertices left sitting on top of each other keep their borders apart even
+  // once the geometry lines up again, so a release welds them back into one.
+  function weldMesh(m) {
+    var moved = false;
+    for (var i = 0; i < m.verts.length; i++) {
+      for (var j = i + 1; j < m.verts.length; j++) {
+        if (Math.abs(m.verts[i][0] - m.verts[j][0]) > 1e-6) continue;
+        if (Math.abs(m.verts[i][1] - m.verts[j][1]) > 1e-6) continue;
+        m.faces.forEach(function (f) {
+          f.vs = f.vs.map(function (k) { return k === j ? i : k; });
+          var out = [];
+          for (var k = 0; k < f.vs.length; k++) {
+            if (f.vs[k] !== f.vs[(k + 1) % f.vs.length]) out.push(f.vs[k]);
+          }
+          if (out.length >= 3) f.vs = out;
+        });
+        moved = true;
+      }
+    }
+    return moved;
   }
 
   // Every face a simple polygon wound the same way, with room left in it, and
@@ -1702,6 +1780,18 @@
     ];
   }
 
+  // the one piece of border under the hand, for taking it out of its line
+  function segAt(x, y) {
+    var reach = 11 * viewScale(), best = null, bestD = reach;
+    view.cuts.forEach(function (run) {
+      run.segs.forEach(function (s) {
+        var d = distToSeg(x, y, mesh.verts[s.a], mesh.verts[s.b]);
+        if (d < bestD) { bestD = d; best = { run: run, seg: s }; }
+      });
+    });
+    return best;
+  }
+
   function cutAt(x, y) {
     var reach = 11 * viewScale(), best = null, bestD = reach;
     view.cuts.forEach(function (run) {
@@ -1867,6 +1957,8 @@
       if (drag.pivot !== undefined) pivotRun(drag, p);
       else if (drag.vertex !== undefined) moveVert(mesh, drag.vertex, p);
       else slideRun(drag, p[0] - drag.start[0], p[1] - drag.start[1]);
+      // a vertex may have come to rest on a face it was not part of
+      repairMesh(mesh);
 
       // Refuse a move that tears the page or presses a panel flat. Trying it and
       // putting it back is simpler than working out in advance which moves are
@@ -1933,18 +2025,39 @@
       }
       return;
     }
+    // Alt takes the piece under the hand out of its line, so one tier can step
+    // sideways on its own. Everything after that is an ordinary border drag -
+    // the piece is simply its own border now.
+    var stepping = false;
+    if (e.altKey) {
+      var hit = segAt(p[0], p[1]);
+      var made = hit && detachSegment(mesh, hit.seg, hit.run);
+      if (made) {
+        repairMesh(mesh);
+        render();
+        var found = view.cuts.filter(function (run) {
+          return run.segs.some(function (s) {
+            return (s.a === made.a && s.b === made.b) || (s.a === made.b && s.b === made.a);
+          });
+        })[0];
+        if (found) { cu = found; stepping = true; }
+      }
+    }
     var cross = {};
     cu.list.forEach(function (k) { cross[k] = crossingDir(k, cu.dir); });
     drag = {
       run: cu, start: p, from: vertsSnapshot(), axis: runAxis(cu),
-      anchor: mesh.verts[cu.list[0]].slice(), cross: cross
+      anchor: mesh.verts[cu.list[0]].slice(), cross: cross, stepping: stepping
     };
-    say('경계선을 옮기는 중 — 기울이려면 꼭짓점을 끄세요.');
+    say(stepping ? '이 조각만 떼어 옮기는 중 — 나머지 줄은 제자리에 남습니다.'
+                 : '경계선을 옮기는 중 — 기울이려면 꼭짓점을 끄세요.');
   });
 
   window.addEventListener('mouseup', function () {
     if (!drag) return;
     drag = null;
+    // pieces that ended up exactly back in line become one border again
+    if (weldMesh(mesh)) repairMesh(mesh);
     // A click follows every release, and after a tilt the pointer has been
     // carried well clear of the border it was turning - which used to read as a
     // click on empty panel, and cut it.
