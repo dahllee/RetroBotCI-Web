@@ -451,7 +451,7 @@
       <p id="status"></p>
       <p class="note">
         칸 안을 <strong>클릭</strong>하면 그 자리에서 갈라집니다. <kbd>Alt</kbd>를 누른 채 클릭하면 반대 방향으로 갈라집니다.
-        경계선을 <strong>드래그</strong>하면 그 선이 움직이고, <kbd>Alt</kbd>를 같이 누르면 선이 기울어집니다.
+        경계선을 <strong>드래그</strong>하면 그 선이 통째로 움직이고, 선이 만나는 <strong>꼭짓점</strong>을 드래그하면 거기 모인 선들이 기울어집니다.
         <kbd>Ctrl</kbd>+<kbd>Z</kbd>로 되돌립니다.
       </p>
       <p class="note">
@@ -884,80 +884,354 @@
     return { minX: minX, minY: minY, maxX: maxX, maxY: maxY };
   }
 
-  // ══ The tree ══════════════════════════════════════════
-  // A leaf is a panel. A branch is a cut: { dir, at, tilt, a, b }. Everything
-  // the three ways of building a layout produce is one of these trees, which is
-  // why a preset can be taken apart by hand and a hand-made one re-generated.
+  // ══ The mesh ══════════════════════════════════════════
+  // The page is vertices and faces, and a face is a panel. A border between two
+  // panels is a run of segments they share; moving that border is moving the
+  // vertices at its ends, and so is tilting it. Because those are the same
+  // operation there is no way to reach a position and an angle that contradict
+  // each other - which a separate `tilt` value could, and did.
+  //
+  // It also means no border has to cross the whole page. That is what lets a
+  // page be staggered, which a tree of full-width cuts cannot express at all.
+  //
+  // The one invariant everything rests on: if a vertex lies on a face's
+  // boundary, it is IN that face's loop. Without it a neighbour can be moved off
+  // a shared edge and the page tears open.
 
-  // Every node carries an id. A merge is remembered as a list of leaf ids rather
-  // than as a list of leaf objects, because undo restores a *copy* of the tree -
-  // object identity does not survive that, and an id does.
-  var nextId = 1;
+  var nextFaceId = 1;
 
-  function leaf() { return { id: nextId++ }; }
-  function isLeaf(n) { return !n.dir; }
-  function cut(dir, at, a, b, tilt) {
-    return { id: nextId++, dir: dir, at: at, tilt: tilt || 0, a: a, b: b };
+  function newMesh(rect) {
+    var x = rect.x, y = rect.y, w = rect.w, h = rect.h;
+    return {
+      verts: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]],
+      faces: [{ id: nextFaceId++, vs: [0, 1, 2, 3] }],
+      page: { x: x, y: y, w: w, h: h }
+    };
   }
 
-  function cloneTree(n) {
-    if (isLeaf(n)) return { id: n.id };
-    return { id: n.id, dir: n.dir, at: n.at, tilt: n.tilt, a: cloneTree(n.a), b: cloneTree(n.b) };
+  function cloneMesh(m) {
+    return {
+      verts: m.verts.map(function (p) { return [p[0], p[1]]; }),
+      faces: m.faces.map(function (f) { return { id: f.id, vs: f.vs.slice() }; }),
+      page: { x: m.page.x, y: m.page.y, w: m.page.w, h: m.page.h }
+    };
   }
 
-  // Reading order falls out of the walk: a horizontal cut is always top first,
-  // and a vertical one starts on whichever side the reader starts on.
-  function walkTree(node, poly, leaves, cuts, rtl) {
-    if (isLeaf(node)) { leaves.push({ node: node, poly: poly }); return; }
-    var r = cutRegion(poly, node.dir, node.at, node.tilt);
-    if (!r) { leaves.push({ node: node, poly: poly }); return; }
-    cuts.push({ node: node, seg: r.seg, parent: poly });
-    var first = node.dir === 'v' && rtl ? r.B : r.A;
-    var second = node.dir === 'v' && rtl ? r.A : r.B;
-    var firstNode = node.dir === 'v' && rtl ? node.b : node.a;
-    var secondNode = node.dir === 'v' && rtl ? node.a : node.b;
-    walkTree(firstNode, first, leaves, cuts, rtl);
-    walkTree(secondNode, second, leaves, cuts, rtl);
+  function facePts(m, f) { return f.vs.map(function (i) { return m.verts[i]; }); }
+
+  // The page rectangle is set by the format and the margin, so when either
+  // changes the whole mesh is carried across rather than rebuilt - the layout
+  // belongs to the reader, not to the paper size.
+  function rescaleMesh(m, to) {
+    var from = m.page;
+    if (from.w < 1e-6 || from.h < 1e-6) return;
+    var kx = to.w / from.w, ky = to.h / from.h;
+    m.verts.forEach(function (p) {
+      p[0] = to.x + (p[0] - from.x) * kx;
+      p[1] = to.y + (p[1] - from.y) * ky;
+    });
+    m.page = { x: to.x, y: to.y, w: to.w, h: to.h };
+  }
+
+  function vertexAt(m, p) {
+    for (var i = 0; i < m.verts.length; i++) {
+      if (Math.abs(m.verts[i][0] - p[0]) < 1e-6 && Math.abs(m.verts[i][1] - p[1]) < 1e-6) return i;
+    }
+    m.verts.push([p[0], p[1]]);
+    return m.verts.length - 1;
+  }
+
+  function onSegment(p, a, b) {
+    var ex = b[0] - a[0], ey = b[1] - a[1], L2 = ex * ex + ey * ey;
+    if (L2 < 1e-12) return false;
+    var t = ((p[0] - a[0]) * ex + (p[1] - a[1]) * ey) / L2;
+    if (t <= 1e-9 || t >= 1 - 1e-9) return false;
+    var dx = a[0] + ex * t - p[0], dy = a[1] + ey * t - p[1];
+    return dx * dx + dy * dy < 1e-8;
+  }
+
+  // A vertex dropped partway along one face's edge lies on its neighbour's edge
+  // too, and both loops have to carry it or a later move will pull them apart.
+  function insertOnEdges(m, vi) {
+    var p = m.verts[vi];
+    m.faces.forEach(function (f) {
+      if (f.vs.indexOf(vi) >= 0) return;
+      for (var i = 0; i < f.vs.length; i++) {
+        var a = m.verts[f.vs[i]], b = m.verts[f.vs[(i + 1) % f.vs.length]];
+        if (onSegment(p, a, b)) { f.vs.splice(i + 1, 0, vi); return; }
+      }
+    });
+  }
+
+  // `at` runs across the face's bounding box and `tilt` swings the line about
+  // that point, so the presets read the same as they always did.
+  function splitFace(m, f, dir, at, tilt) {
+    var pts = facePts(m, f), bb = polyBBox({ pts: pts });
+    if (bb.w < 1e-6 || bb.h < 1e-6) return null;
+    var a = (tilt || 0) * Math.PI / 180;
+    var cx, cy, dx, dy;
+    if (dir === 'v') {
+      cx = bb.x + at * bb.w; cy = bb.y + bb.h / 2;
+      dx = -Math.sin(a); dy = Math.cos(a);
+    } else {
+      cx = bb.x + bb.w / 2; cy = bb.y + at * bb.h;
+      dx = Math.cos(a); dy = Math.sin(a);
+    }
+
+    var hits = [], seen = {};
+    for (var i = 0; i < f.vs.length; i++) {
+      var p = m.verts[f.vs[i]], q = m.verts[f.vs[(i + 1) % f.vs.length]];
+      var ex = q[0] - p[0], ey = q[1] - p[1];
+      var den = dx * ey - dy * ex;
+      if (Math.abs(den) < 1e-12) continue;
+      // (p + t·e - c) × d = 0, solved for t along p->q
+      var t = ((p[0] - cx) * dy - (p[1] - cy) * dx) / den;
+      if (t < -1e-9 || t > 1 + 1e-9) continue;
+      t = clamp(t, 0, 1);
+      var pt = [p[0] + ex * t, p[1] + ey * t];
+      var k = Math.round(pt[0] / 1e-4) + ',' + Math.round(pt[1] / 1e-4);
+      if (seen[k]) continue;          // a line through a corner reports both edges
+      seen[k] = true;
+      hits.push(pt);
+    }
+    if (hits.length !== 2) return null;
+
+    var ai = vertexAt(m, hits[0]), bi = vertexAt(m, hits[1]);
+    insertOnEdges(m, ai);
+    insertOnEdges(m, bi);
+
+    var loop = f.vs.slice();
+    var ia = loop.indexOf(ai), ib = loop.indexOf(bi);
+    if (ia < 0 || ib < 0) return null;
+    var one = [], two = [], j;
+    for (j = ia; ; j = (j + 1) % loop.length) { one.push(loop[j]); if (j === ib) break; }
+    for (j = ib; ; j = (j + 1) % loop.length) { two.push(loop[j]); if (j === ia) break; }
+    if (one.length < 3 || two.length < 3) return null;
+
+    f.vs = one;
+    var made = { id: nextFaceId++, vs: two };
+    m.faces.push(made);
+
+    // Which half came out of `one` depends on where the cut happened to meet the
+    // loop, so name them by where they ended up instead: `a` is the near side -
+    // top for a horizontal cut, left for a vertical one - and `b` is the far.
+    // The presets read in that order and would otherwise cut the wrong piece.
+    function mid(face) {
+      var pts = facePts(m, face), sx = 0, sy = 0;
+      pts.forEach(function (p) { sx += p[0]; sy += p[1]; });
+      return dir === 'v' ? sx / pts.length : sy / pts.length;
+    }
+    var near = mid(f) <= mid(made) ? f : made;
+    return { a: near, b: near === f ? made : f };
+  }
+
+  // An edge is a page edge when no other face uses the same pair of vertices.
+  // Anything shared is a border between panels, and takes the gutter.
+  function edgeShared(m, f, i) {
+    var a = f.vs[i], b = f.vs[(i + 1) % f.vs.length];
+    for (var k = 0; k < m.faces.length; k++) {
+      var g = m.faces[k];
+      if (g === f) continue;
+      for (var j = 0; j < g.vs.length; j++) {
+        var c = g.vs[j], d = g.vs[(j + 1) % g.vs.length];
+        if ((a === c && b === d) || (a === d && b === c)) return true;
+      }
+    }
+    return false;
+  }
+
+  function facePoly(m, f) {
+    return {
+      pts: facePts(m, f).map(function (p) { return [p[0], p[1]]; }),
+      inner: f.vs.map(function (_, i) { return edgeShared(m, f, i); })
+    };
+  }
+
+  // A vertex on the page border has to stay on it or dragging peels the page
+  // open; the corners cannot move at all.
+  function pinOf(m, p) {
+    var r = m.page, e = 1e-6;
+    var onL = Math.abs(p[0] - r.x) < e, onR = Math.abs(p[0] - (r.x + r.w)) < e;
+    var onT = Math.abs(p[1] - r.y) < e, onB = Math.abs(p[1] - (r.y + r.h)) < e;
+    if ((onL || onR) && (onT || onB)) return 'corner';
+    if (onL || onR) return 'y';
+    if (onT || onB) return 'x';
+    return null;
+  }
+
+  function moveVert(m, vi, to) {
+    var cur = m.verts[vi], pin = pinOf(m, cur);
+    if (pin === 'corner') return;
+    if (pin === 'y') { cur[1] = to[1]; return; }
+    if (pin === 'x') { cur[0] = to[0]; return; }
+    cur[0] = to[0];
+    cur[1] = to[1];
+  }
+
+  // What reads on screen as one border: a straight run of shared segments joined
+  // end to end. Grabbing anywhere on it picks up the whole run, so tiers stay
+  // lined up unless a page is deliberately staggered.
+  function borderRuns(m) {
+    var segs = [], seen = {};
+    m.faces.forEach(function (f) {
+      for (var i = 0; i < f.vs.length; i++) {
+        var a = f.vs[i], b = f.vs[(i + 1) % f.vs.length];
+        var k = Math.min(a, b) + '-' + Math.max(a, b);
+        if (seen[k] || !edgeShared(m, f, i)) continue;
+        seen[k] = true;
+        segs.push({ a: a, b: b });
+      }
+    });
+    function unit(s) {
+      var p = m.verts[s.a], q = m.verts[s.b];
+      var dx = q[0] - p[0], dy = q[1] - p[1], L = Math.hypot(dx, dy) || 1;
+      return [dx / L, dy / L];
+    }
+    var used = segs.map(function () { return false; }), runs = [];
+    for (var i = 0; i < segs.length; i++) {
+      if (used[i]) continue;
+      used[i] = true;
+      var d0 = unit(segs[i]), on = {}, mine = [segs[i]];
+      on[segs[i].a] = true;
+      on[segs[i].b] = true;
+      for (var grew = true; grew;) {
+        grew = false;
+        for (var j = 0; j < segs.length; j++) {
+          if (used[j] || (!on[segs[j].a] && !on[segs[j].b])) continue;
+          var dj = unit(segs[j]);
+          if (Math.abs(d0[0] * dj[1] - d0[1] * dj[0]) > 1e-6) continue;
+          used[j] = true;
+          mine.push(segs[j]);
+          on[segs[j].a] = true;
+          on[segs[j].b] = true;
+          grew = true;
+        }
+      }
+      runs.push({ segs: mine, list: Object.keys(on).map(Number), dir: d0 });
+    }
+    return runs;
+  }
+
+  // Every face a simple polygon wound the same way, with room left in it, and
+  // the faces together still exactly the page.
+  function meshValid(m, least) {
+    var total = 0;
+    for (var i = 0; i < m.faces.length; i++) {
+      var pts = facePts(m, m.faces[i]);
+      if (pts.length < 3) return false;
+      var signed = 0;
+      for (var j = 0; j < pts.length; j++) {
+        var a = pts[j], b = pts[(j + 1) % pts.length];
+        signed += a[0] * b[1] - b[0] * a[1];
+      }
+      if (signed <= 0) return false;                       // inverted or collapsed
+      total += signed / 2;
+      var bb = polyBBox({ pts: pts });
+      if (Math.min(bb.w, bb.h) < least) return false;
+      if (selfCrossing(pts)) return false;
+    }
+    var want = m.page.w * m.page.h;
+    return Math.abs(total - want) < Math.max(1, want * 1e-6);
+  }
+
+  function selfCrossing(pts) {
+    function side(a, b, c) {
+      var v = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+      return Math.abs(v) < 1e-9 ? 0 : (v > 0 ? 1 : -1);
+    }
+    var n = pts.length;
+    for (var i = 0; i < n; i++) {
+      for (var j = i + 2; j < n; j++) {
+        if (i === 0 && j === n - 1) continue;
+        var p = pts[i], p2 = pts[(i + 1) % n], q = pts[j], q2 = pts[(j + 1) % n];
+        var d1 = side(p, p2, q), d2 = side(p, p2, q2), d3 = side(q, q2, p), d4 = side(q, q2, p2);
+        if (d1 !== d2 && d3 !== d4 && d1 && d2 && d3 && d4) return true;
+      }
+    }
+    return false;
+  }
+
+  // The tree used to hand this over for free. Now it is a sort: down the page
+  // first, and across within a band of panels that share a tier.
+  function readingOrder(m, rtl) {
+    var boxes = m.faces.map(function (f) {
+      var bb = polyBBox({ pts: facePts(m, f) });
+      return { f: f, top: bb.y, left: bb.x, bottom: bb.y + bb.h };
+    });
+    var out = [], left = boxes.slice();
+    while (left.length) {
+      var first = left.reduce(function (a, b) { return b.top < a.top ? b : a; });
+      var band = left.filter(function (b) { return b.top < first.bottom - 1e-6; });
+      band.sort(function (a, b) { return rtl ? b.left - a.left : a.left - b.left; });
+      band.forEach(function (b) {
+        out.push(b.f);
+        left.splice(left.indexOf(b), 1);
+      });
+    }
+    return out;
   }
 
   // ══ Presets ═══════════════════════════════════════════
-  // `at` is relative to the region being cut, so cutting off one row at a time
-  // and recursing on the rest gives equal rows without any arithmetic.
+  // Each one is a short sequence of cuts. `at` is relative to the face being
+  // cut, so taking one tier off at a time and carrying on with the rest gives
+  // equal tiers without any arithmetic.
 
-  function rows(n) { return n <= 1 ? leaf() : cut('h', 1 / n, leaf(), rows(n - 1)); }
-  function cols(n) { return n <= 1 ? leaf() : cut('v', 1 / n, leaf(), cols(n - 1)); }
-  function grid(r, c) { return r <= 1 ? cols(c) : cut('h', 1 / r, cols(c), grid(r - 1, c)); }
+  function rows(m, f, n) {
+    if (n <= 1) return;
+    var r = splitFace(m, f, 'h', 1 / n, 0);
+    if (r) rows(m, r.b, n - 1);        // carry on with what is left below
+  }
+
+  function cols(m, f, n) {
+    if (n <= 1) return;
+    var r = splitFace(m, f, 'v', 1 / n, 0);
+    if (r) cols(m, r.b, n - 1);
+  }
+
+  function grid(m, r, c) {
+    rows(m, m.faces[0], r);
+    m.faces.slice().forEach(function (f) { cols(m, f, c); });
+  }
 
   var PRESETS = [
     // Named the way a page is described out loud: 칸 is how many across a tier
     // runs, 단 is how many tiers down. A plain grid says both, and the ones that
     // are not grids say what they are instead.
-    ['1칸', function () { return leaf(); }],
-    ['1칸 2단', function () { return rows(2); }],
-    ['1칸 3단', function () { return rows(3); }],
-    ['1칸 4단', function () { return rows(4); }],
-    ['2칸 2단', function () { return grid(2, 2); }],
-    ['2칸 3단', function () { return grid(3, 2); }],
-    ['2칸 4단', function () { return grid(4, 2); }],
-    ['1칸 + 2칸', function () { return cut('h', 0.5, leaf(), cols(2)); }],
-    ['2칸 + 1칸', function () { return cut('h', 0.5, cols(2), leaf()); }],
+    ['1칸', function (m) {}],
+    ['1칸 2단', function (m) { rows(m, m.faces[0], 2); }],
+    ['1칸 3단', function (m) { rows(m, m.faces[0], 3); }],
+    ['1칸 4단', function (m) { rows(m, m.faces[0], 4); }],
+    ['2칸 2단', function (m) { grid(m, 2, 2); }],
+    ['2칸 3단', function (m) { grid(m, 3, 2); }],
+    ['2칸 4단', function (m) { grid(m, 4, 2); }],
+    ['1칸 + 2칸', function (m) { cols(m, splitFace(m, m.faces[0], 'h', 0.5, 0).b, 2); }],
+    ['2칸 + 1칸', function (m) { cols(m, splitFace(m, m.faces[0], 'h', 0.5, 0).a, 2); }],
     // The big panel takes half against two tiers and a little under half against
     // three, so it stays clearly the larger of the two either way. Each pair is
     // the same split read from the other end of the page.
-    ['큰칸 + 2단', function () { return cut('h', 0.5, leaf(), rows(2)); }],
-    ['2단 + 큰칸', function () { return cut('h', 0.5, rows(2), leaf()); }],
-    ['큰칸 + 3단', function () { return cut('h', 0.46, leaf(), rows(3)); }],
-    ['3단 + 큰칸', function () { return cut('h', 0.54, rows(3), leaf()); }],
-    ['좌1칸 + 우2칸', function () { return cut('v', 0.5, leaf(), rows(2)); }],
-    ['좌2칸 + 우1칸', function () { return cut('v', 0.5, rows(2), leaf()); }],
-    ['역동 3칸', function () { return cut('h', 0.4, leaf(), cut('v', 0.45, leaf(), leaf(), 9), -7); }],
-    ['역동 5칸', function () {
-      return cut('h', 0.36,
-        cut('v', 0.55, leaf(), leaf(), 8),
-        cut('h', 0.5, leaf(), cut('v', 0.5, leaf(), leaf(), -10), 6),
-        -5);
+    ['큰칸 + 2단', function (m) { rows(m, splitFace(m, m.faces[0], 'h', 0.5, 0).b, 2); }],
+    ['2단 + 큰칸', function (m) { rows(m, splitFace(m, m.faces[0], 'h', 0.5, 0).a, 2); }],
+    ['큰칸 + 3단', function (m) { rows(m, splitFace(m, m.faces[0], 'h', 0.46, 0).b, 3); }],
+    ['3단 + 큰칸', function (m) { rows(m, splitFace(m, m.faces[0], 'h', 0.54, 0).a, 3); }],
+    ['좌1칸 + 우2칸', function (m) { rows(m, splitFace(m, m.faces[0], 'v', 0.5, 0).b, 2); }],
+    ['좌2칸 + 우1칸', function (m) { rows(m, splitFace(m, m.faces[0], 'v', 0.5, 0).a, 2); }],
+    ['역동 3칸', function (m) {
+      var r = splitFace(m, m.faces[0], 'h', 0.4, -7);
+      splitFace(m, r.b, 'v', 0.45, 9);
+    }],
+    ['역동 5칸', function (m) {
+      var r = splitFace(m, m.faces[0], 'h', 0.36, -5);
+      splitFace(m, r.a, 'v', 0.55, 8);
+      var b = splitFace(m, r.b, 'h', 0.5, 6);
+      splitFace(m, b.b, 'v', 0.5, -10);
     }]
   ];
+
+  function buildPreset(fn, rect) {
+    var m = newMesh(rect);
+    fn(m);
+    return m;
+  }
 
   // Each page carries the resolution it was measured at, so picking a 판형 sets
   // both. The screen-bound ones are 72 - a webtoon strip has no print size.
@@ -1002,30 +1276,28 @@
   // Split the roomiest panel each time, across whichever way it is longest, so
   // the panels stay close to a workable shape however many are asked for.
   // `dyn` is the only thing that pushes it off centre, or off square.
-  function autoTree(n, dyn, seed, W, H) {
+  function autoMesh(n, dyn, seed, rect) {
     var rnd = mulberry32(seed);
-    // real leaves, so they carry ids; w/h ride along as bookkeeping and are
-    // dropped by the cloneTree at the end
-    function box(w, h) { var n = leaf(); n.w = w; n.h = h; return n; }
-    var root = box(W, H);
-    var open = [root];
-    while (open.length < n) {
-      open.sort(function (x, y) { return y.w * y.h - x.w * x.h; });
+    var m = newMesh(rect);
+    while (m.faces.length < n) {
+      var boxes = m.faces.map(function (f) {
+        var bb = polyBBox({ pts: facePts(m, f) });
+        return { f: f, bb: bb, area: bb.w * bb.h };
+      });
+      boxes.sort(function (x, y) { return y.area - x.area; });
       // among the largest handful, not strictly the largest, or every layout at
       // a given count comes out the same
-      var top = Math.max(1, Math.ceil(open.length * 0.45));
-      var pick = open[Math.floor(rnd() * top)];
-      var dir = pick.h >= pick.w ? 'h' : 'v';
+      var top = Math.max(1, Math.ceil(boxes.length * 0.45));
+      var pick = boxes[Math.floor(rnd() * top)];
+      var dir = pick.bb.h >= pick.bb.w ? 'h' : 'v';
       if (rnd() < dyn / 320) dir = dir === 'h' ? 'v' : 'h';
       var at = clamp(0.5 + (rnd() - 0.5) * (dyn / 100) * 0.55, 0.24, 0.76);
       var tilt = (rnd() - 0.5) * 2 * (dyn / 100) * 9;
-      var a = dir === 'h' ? box(pick.w, pick.h * at) : box(pick.w * at, pick.h);
-      var b = dir === 'h' ? box(pick.w, pick.h * (1 - at)) : box(pick.w * (1 - at), pick.h);
-      pick.dir = dir; pick.at = at; pick.tilt = tilt; pick.a = a; pick.b = b;
-      open.splice(open.indexOf(pick), 1);
-      open.push(a, b);
+      if (!splitFace(m, pick.f, dir, at, tilt)) {
+        if (!splitFace(m, pick.f, dir, 0.5, 0)) break;   // give up on this one
+      }
     }
-    return cloneTree(root);   // drops the w/h bookkeeping
+    return m;
   }
 
   // ══ State ═════════════════════════════════════════════
@@ -1043,9 +1315,9 @@
 
   var ref = { img: null, url: null };
 
-  var tree = grid(3, 2);
-  var groups = [];          // each entry: leaf ids that are drawn as one panel
-  var selected = null;      // leaf id waiting for a partner to merge with
+  var mesh = null;          // built once the page rectangle is known
+  var groups = [];          // each entry: face ids that are drawn as one panel
+  var selected = null;      // face id waiting for a partner to merge with
   var history = [];
 
   var canvas = document.getElementById('preview');
@@ -1055,8 +1327,9 @@
   var undoBtn = document.getElementById('undo');
 
   var view = { panels: [], cuts: [], broken: 0 };
-  var hover = { panel: null, cut: null, x: 0, y: 0 };
+  var hover = { panel: null, cut: null, vertex: null, x: 0, y: 0 };
   var drag = null;
+  var swallowClick = false;
 
   function say(msg) { status.textContent = msg; }
 
@@ -1074,7 +1347,7 @@
 
   function push() {
     history.push({
-      tree: cloneTree(tree),
+      mesh: cloneMesh(mesh),
       groups: groups.map(function (g) { return g.slice(); })
     });
     if (history.length > 60) history.shift();
@@ -1084,7 +1357,7 @@
   function undo() {
     if (!history.length) return;
     var was = history.pop();
-    tree = was.tree;
+    mesh = was.mesh;
     groups = was.groups;
     selected = null;
     undoBtn.disabled = !history.length;
@@ -1093,12 +1366,23 @@
   }
 
   // Anything that throws the layout away has to throw the merges away with it -
-  // they name leaves that are about to stop existing.
-  function replaceTree(next) {
+  // they name faces that are about to stop existing.
+  function replaceMesh(next) {
     push();
-    tree = next;
+    mesh = next;
     groups = [];
     selected = null;
+  }
+
+  // The page rectangle moves whenever the format, the margin or the resolution
+  // does, and the layout is carried across rather than rebuilt.
+  function syncMesh() {
+    var r = pageRect();
+    if (!mesh) { mesh = buildPreset(PRESETS[5][1], r); return; }
+    if (Math.abs(mesh.page.x - r.x) > 1e-6 || Math.abs(mesh.page.y - r.y) > 1e-6 ||
+        Math.abs(mesh.page.w - r.w) > 1e-6 || Math.abs(mesh.page.h - r.h) > 1e-6) {
+      rescaleMesh(mesh, r);
+    }
   }
 
   function groupOf(id) {
@@ -1110,9 +1394,14 @@
 
   // ══ Render ════════════════════════════════════════════
 
-  function rootPoly() {
+  function pageRect() {
     var m = Math.min(state.margin, Math.min(state.w, state.h) / 2 - 10);
-    return rectPoly(m, m, state.w - m * 2, state.h - m * 2);
+    return { x: m, y: m, w: state.w - m * 2, h: state.h - m * 2 };
+  }
+
+  function rootPoly() {
+    var r = pageRect();
+    return rectPoly(r.x, r.y, r.w, r.h);
   }
 
   // The panel as it gets drawn: region pulled back by half the gutter on its cut
@@ -1170,20 +1459,19 @@
     return u;
   }
 
-  // What actually gets drawn: the tree's regions, with each merged set collapsed
-  // into a single panel that takes the reading position of its first member.
-  function buildPanels(root) {
-    var leaves = [], cuts = [];
-    walkTree(tree, root, leaves, cuts, state.rtl);
-
+  // What actually gets drawn: the mesh's faces in reading order, with each
+  // merged set collapsed into a single panel that takes the reading position of
+  // its first member.
+  function buildPanels() {
+    var order = readingOrder(mesh, state.rtl);
     var byId = {};
-    leaves.forEach(function (l) { byId[l.node.id] = l; });
+    order.forEach(function (f) { byId[f.id] = f; });
 
     var panels = [], done = {}, broken = 0;
-    leaves.forEach(function (l) {
-      var g = groupOf(l.node.id);
+    order.forEach(function (f) {
+      var g = groupOf(f.id);
       if (!g) {
-        panels.push({ ids: [l.node.id], node: l.node, poly: l.poly, merged: false });
+        panels.push({ ids: [f.id], face: f, poly: facePoly(mesh, f), merged: false });
         return;
       }
       var key = g.join(',');
@@ -1191,37 +1479,40 @@
       done[key] = true;
       var members = g.map(function (id) { return byId[id]; }).filter(Boolean);
       if (!members.length) return;
-      var poly = mergePolys(members.map(function (m) { return m.poly; }));
+      var polys = members.map(function (mf) { return facePoly(mesh, mf); });
+      var poly = mergePolys(polys);
       if (!poly) {
         broken++;
-        members.forEach(function (m) {
-          panels.push({ ids: [m.node.id], node: m.node, poly: m.poly, merged: false });
+        members.forEach(function (mf, i) {
+          panels.push({ ids: [mf.id], face: mf, poly: polys[i], merged: false });
         });
         return;
       }
       panels.push({
-        ids: members.map(function (m) { return m.node.id; }),
-        node: members.length > 1 ? null : members[0].node,
+        ids: members.map(function (mf) { return mf.id; }),
+        face: members.length > 1 ? null : members[0],
         poly: poly,
         merged: members.length > 1
       });
     });
 
-    // A cut swallowed by a merge is no longer a border anyone can see, so it
+    // A border swallowed by a merge is no longer something anyone can see, so it
     // stops being something the mouse can grab.
     var merged = panels.filter(function (p) { return p.merged; });
-    var live = cuts.filter(function (cu) {
-      if (!cu.seg) return false;
-      var mx = (cu.seg[0][0] + cu.seg[1][0]) / 2, my = (cu.seg[0][1] + cu.seg[1][1]) / 2;
-      return !merged.some(function (p) { return deepInside(p.poly, mx, my); });
+    var live = borderRuns(mesh).filter(function (run) {
+      return !run.segs.every(function (s) {
+        var a = mesh.verts[s.a], b = mesh.verts[s.b];
+        var mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+        return merged.some(function (p) { return deepInside(p.poly, mx, my); });
+      });
     });
 
     return { panels: panels, cuts: live, broken: broken };
   }
 
   function render() {
-    var root = rootPoly();
-    var built = buildPanels(root);
+    syncMesh();
+    var built = buildPanels();
     view.panels = built.panels;
     view.cuts = built.cuts;
     view.broken = built.broken;
@@ -1315,18 +1606,33 @@
       if (!hover.panel.merged) previewCutLine(c, hover.panel, s);
     }
 
-    if (hover.cut || drag) {
-      var seg = (drag ? drag.entry : hover.cut).seg;
-      if (seg) {
-        c.save();
-        c.strokeStyle = '#ef4e23';
-        c.lineWidth = 3 * s;
-        c.beginPath();
-        c.moveTo(seg[0][0], seg[0][1]);
-        c.lineTo(seg[1][0], seg[1][1]);
-        c.stroke();
-        c.restore();
-      }
+    if ((hover.cut || (drag && drag.run))) {
+      var run = drag && drag.run ? drag.run : hover.cut;
+      c.save();
+      c.strokeStyle = '#ef4e23';
+      c.lineWidth = 3 * s;
+      c.beginPath();
+      run.segs.forEach(function (seg) {
+        c.moveTo(mesh.verts[seg.a][0], mesh.verts[seg.a][1]);
+        c.lineTo(mesh.verts[seg.b][0], mesh.verts[seg.b][1]);
+      });
+      c.stroke();
+      c.restore();
+    }
+
+    // the corner under the hand, which is what tilts a border
+    var handle = drag && drag.vertex !== undefined ? drag.vertex : hover.vertex;
+    if (handle !== null && handle !== undefined && mesh.verts[handle]) {
+      var v = mesh.verts[handle];
+      c.save();
+      c.beginPath();
+      c.arc(v[0], v[1], 8 * s, 0, Math.PI * 2);
+      c.fillStyle = '#ef4e23';
+      c.fill();
+      c.lineWidth = 2 * s;
+      c.strokeStyle = '#fff';
+      c.stroke();
+      c.restore();
     }
 
     if (!state.numbers) return;
@@ -1348,19 +1654,26 @@
     });
   }
 
+  // Where a click would land, drawn by cutting a throwaway copy of the mesh and
+  // reading the new border off it - the same code that will do it for real.
   function previewCutLine(c, entry, s) {
+    if (!entry.face) return;
     var bb = polyBBox(entry.poly);
     var dir = hover.alt ? (state.dir === 'h' ? 'v' : 'h') : state.dir;
-    var at = dir === 'v' ? (hover.x - bb.x) / bb.w : (hover.y - bb.y) / bb.h;
-    var r = cutRegion(entry.poly, dir, clamp(at, 0.05, 0.95), 0);
-    if (!r || !r.seg) return;
+    var at = clamp(dir === 'v' ? (hover.x - bb.x) / bb.w : (hover.y - bb.y) / bb.h, 0.05, 0.95);
+    var probe = cloneMesh(mesh);
+    var face = probe.faces.filter(function (f) { return f.id === entry.face.id; })[0];
+    if (!face) return;
+    var before = probe.verts.length;
+    if (!splitFace(probe, face, dir, at, 0) || probe.verts.length < before + 1) return;
+    var a = probe.verts[before], b = probe.verts[before + 1] || probe.verts[before];
     c.save();
     c.strokeStyle = '#ef4e23';
     c.lineWidth = 2 * s;
     c.setLineDash([10 * s, 7 * s]);
     c.beginPath();
-    c.moveTo(r.seg[0][0], r.seg[0][1]);
-    c.lineTo(r.seg[1][0], r.seg[1][1]);
+    c.moveTo(a[0], a[1]);
+    c.lineTo(b[0], b[1]);
     c.stroke();
     c.restore();
   }
@@ -1391,10 +1704,11 @@
 
   function cutAt(x, y) {
     var reach = 11 * viewScale(), best = null, bestD = reach;
-    view.cuts.forEach(function (cu) {
-      if (!cu.seg) return;
-      var d = distToSeg(x, y, cu.seg[0], cu.seg[1]);
-      if (d < bestD) { bestD = d; best = cu; }
+    view.cuts.forEach(function (run) {
+      run.segs.forEach(function (s) {
+        var d = distToSeg(x, y, mesh.verts[s.a], mesh.verts[s.b]);
+        if (d < bestD) { bestD = d; best = run; }
+      });
     });
     return best;
   }
@@ -1413,63 +1727,126 @@
     return null;
   }
 
-  // ── Holding the other borders still ──────────────────────
-  // A cut remembers where it sits as a fraction of the region it divides, which
-  // means shrinking that region drags everything inside it along: pull the top
-  // border of a three-tier page down and the border below it slides too, though
-  // nobody touched it. So a drag records where every border actually is, and
-  // after each move rewrites the fractions of the ones it did not touch to put
-  // them back where they were.
-
-  function cutAxis(node, bb) {
-    return node.dir === 'v' ? bb.x + node.at * bb.w : bb.y + node.at * bb.h;
-  }
-
-  function readCuts(node, poly, out) {
-    if (isLeaf(node)) return out;
-    var bb = polyBBox(poly);
-    out[node.id] = cutAxis(node, bb);
-    var r = cutRegion(poly, node.dir, node.at, node.tilt);
-    if (r) { readCuts(node.a, r.A, out); readCuts(node.b, r.B, out); }
-    return out;
-  }
-
-  function holdCuts(node, poly, want, moving) {
-    if (isLeaf(node)) return;
-    var bb = polyBBox(poly);
-    if (node !== moving && want[node.id] !== undefined && bb.w > 0 && bb.h > 0) {
-      var at = node.dir === 'v' ? (want[node.id] - bb.x) / bb.w : (want[node.id] - bb.y) / bb.h;
-      node.at = clamp(at, 0.02, 0.98);
-    }
-    var r = cutRegion(poly, node.dir, node.at, node.tilt);
-    if (r) { holdCuts(node.a, r.A, want, moving); holdCuts(node.b, r.B, want, moving); }
-  }
-
-  function readAts(node, out) {
-    if (isLeaf(node)) return out;
-    out[node.id] = node.at;
-    readAts(node.a, out);
-    readAts(node.b, out);
-    return out;
-  }
-
-  function writeAts(node, src) {
-    if (isLeaf(node)) return;
-    if (src[node.id] !== undefined) node.at = src[node.id];
-    writeAts(node.a, src);
-    writeAts(node.b, src);
-  }
-
-  // The narrowest panel on the page, so a drag can be stopped before it presses
-  // one flat rather than letting it reach nothing at all.
-  function tightestPanel() {
-    var leaves = [], cuts = [], least = Infinity;
-    walkTree(tree, rootPoly(), leaves, cuts, state.rtl);
-    leaves.forEach(function (l) {
-      var bb = polyBBox(l.poly);
-      least = Math.min(least, bb.w, bb.h);
+  // A corner of a border, close enough to grab. Page corners are left out - they
+  // cannot move, so offering them is a lie.
+  function handleAt(x, y) {
+    var reach = 15 * viewScale(), best = null, bestD = reach, seen = {};
+    view.cuts.forEach(function (run) {
+      run.list.forEach(function (vi) {
+        if (seen[vi]) return;
+        seen[vi] = true;
+        if (pinOf(mesh, mesh.verts[vi]) === 'corner') return;
+        var v = mesh.verts[vi], d = Math.hypot(x - v[0], y - v[1]);
+        if (d < bestD) { bestD = d; best = vi; }
+      });
     });
-    return least;
+    return best;
+  }
+
+  // ── Moving a border ──────────────────────────────────────
+  // A border is a run of segments and its position is just where its vertices
+  // are, so sliding it is moving them all the same way and tilting it is turning
+  // them about one end. Nothing else on the page is described in terms of this
+  // border, so nothing else moves - which the old fractions could not promise.
+
+  function runEnds(run) {
+    // the two vertices furthest apart along the run are its ends
+    var best = null;
+    run.list.forEach(function (i) {
+      run.list.forEach(function (j) {
+        var a = mesh.verts[i], b = mesh.verts[j];
+        var d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        if (!best || d > best.d) best = { d: d, i: i, j: j };
+      });
+    });
+    return best;
+  }
+
+  // A border divides the page along one axis and keeps doing so however far it
+  // gets tilted, so the axis is fixed when the drag starts.
+  function runAxis(run) { return Math.abs(run.dir[0]) >= Math.abs(run.dir[1]) ? 1 : 0; }
+
+  // Every direction of travel leaving a vertex, so a move can tell which other
+  // line passes through it.
+  function incidentDirs(vi) {
+    var out = [], p = mesh.verts[vi];
+    mesh.faces.forEach(function (f) {
+      for (var i = 0; i < f.vs.length; i++) {
+        var a = f.vs[i], b = f.vs[(i + 1) % f.vs.length];
+        if (a !== vi && b !== vi) continue;
+        var o = mesh.verts[a === vi ? b : a];
+        var dx = o[0] - p[0], dy = o[1] - p[1], L = Math.hypot(dx, dy);
+        if (L > 1e-6) out.push([dx / L, dy / L]);
+      }
+    });
+    return out;
+  }
+
+  // The line a vertex has to stay on while the border it belongs to is moved:
+  // the crossing border, or the page edge it sits on. Without this the vertex
+  // travels straight along the drag axis, walks off a slanted crossing border,
+  // and bends it - after which that border is two lines and only half of it can
+  // be picked up.
+  function crossingDir(vi, runDir) {
+    var dirs = incidentDirs(vi);
+    for (var i = 0; i < dirs.length; i++) {
+      if (Math.abs(runDir[0] * dirs[i][1] - runDir[1] * dirs[i][0]) > 0.05) return dirs[i];
+    }
+    return null;
+  }
+
+  function lineCross(p, d, q, e) {
+    var den = d[0] * e[1] - d[1] * e[0];
+    if (Math.abs(den) < 1e-9) return null;
+    var t = ((q[0] - p[0]) * e[1] - (q[1] - p[1]) * e[0]) / den;
+    return [p[0] + d[0] * t, p[1] + d[1] * t];
+  }
+
+  // Dragging the end of a border turns the whole thing about its other end. The
+  // corners along the way are put back on the new line where their own crossing
+  // line meets it, so the border stays straight and nothing it crosses bends.
+  // Dragging a corner in the middle of a border is the other gesture, and does
+  // bend it - that is how a page comes to be staggered.
+  function pivotRun(drag, at) {
+    var pv = drag.from[drag.pivot];
+    moveVert(mesh, drag.vertex, at);
+    var end = mesh.verts[drag.vertex];
+    var dx = end[0] - pv[0], dy = end[1] - pv[1], L = Math.hypot(dx, dy);
+    if (L < 1e-6) return;
+    var d = [dx / L, dy / L];
+    drag.run.list.forEach(function (vi) {
+      if (vi === drag.pivot || vi === drag.vertex) return;
+      var cross = drag.cross[vi];
+      var to = cross ? lineCross(pv, d, drag.from[vi], cross) : null;
+      if (to) moveVert(mesh, vi, to);
+    });
+  }
+
+  // Slide the whole border along its axis. Each of its vertices lands where the
+  // moved line meets whatever else runs through that vertex, so nothing that
+  // crosses it is bent out of line.
+  function slideRun(drag, dx, dy) {
+    var k = drag.axis ? dy : dx;
+    var off = drag.axis ? [0, k] : [k, 0];
+    var anchor = [drag.anchor[0] + off[0], drag.anchor[1] + off[1]];
+    drag.run.list.forEach(function (vi) {
+      var o = drag.from[vi], cross = drag.cross[vi];
+      var to = cross ? lineCross(anchor, drag.run.dir, o, cross) : null;
+      moveVert(mesh, vi, to || [o[0] + off[0], o[1] + off[1]]);
+    });
+  }
+
+  function vertsSnapshot() {
+    var out = {};
+    mesh.verts.forEach(function (p, i) { out[i] = [p[0], p[1]]; });
+    return out;
+  }
+
+  function restoreVerts(from) {
+    Object.keys(from).forEach(function (i) {
+      mesh.verts[i][0] = from[i][0];
+      mesh.verts[i][1] = from[i][1];
+    });
   }
 
   // Would these two make one straight-sided panel? Asked of the regions as they
@@ -1486,54 +1863,34 @@
     hover.x = p[0]; hover.y = p[1]; hover.alt = e.altKey;
 
     if (drag) {
-      var bb = polyBBox(drag.entry.parent);
-      var node = drag.entry.node;
-      var undoAts = readAts(tree, {});
-      var wasTight = tightestPanel();
-      var tiltBefore = node.tilt;
+      var undoVerts = vertsSnapshot();
+      if (drag.pivot !== undefined) pivotRun(drag, p);
+      else if (drag.vertex !== undefined) moveVert(mesh, drag.vertex, p);
+      else slideRun(drag, p[0] - drag.start[0], p[1] - drag.start[1]);
 
-      if (e.altKey) {
-        // aim the line at the cursor, keeping it pinned where it already sits
-        var cx = node.dir === 'v' ? bb.x + node.at * bb.w : bb.x + bb.w / 2;
-        var cy = node.dir === 'v' ? bb.y + bb.h / 2 : bb.y + node.at * bb.h;
-        var dx = p[0] - cx, dy = p[1] - cy;
-        if (Math.hypot(dx, dy) > 8) {
-          var deg = node.dir === 'v'
-            ? Math.atan2(-dx, dy) * 180 / Math.PI
-            : Math.atan2(dy, dx) * 180 / Math.PI;
-          if (deg > 90) deg -= 180;
-          if (deg < -90) deg += 180;
-          node.tilt = clamp(deg, -35, 35);
-        }
-      } else {
-        node.at = clamp(node.dir === 'v' ? (p[0] - bb.x) / bb.w : (p[1] - bb.y) / bb.h, 0.05, 0.95);
-      }
-      holdCuts(tree, rootPoly(), drag.want, node);
-
-      // Refuse a move that squeezes a panel flat - but only judge it against
-      // where it already was, so a page that starts out tight can still be
-      // worked on as long as the drag is not making it worse.
-      var least = state.gutter + 20;
-      var nowTight = tightestPanel();
-      if (nowTight < least && nowTight < wasTight) {
-        writeAts(tree, undoAts);
-        node.tilt = tiltBefore;
-      }
+      // Refuse a move that tears the page or presses a panel flat. Trying it and
+      // putting it back is simpler than working out in advance which moves are
+      // allowed, and it is the same answer.
+      if (!meshValid(mesh, state.gutter + 20)) restoreVerts(undoVerts);
       render();
       return;
     }
 
-    // holding a panel for merging suspends the cut handles - one gesture at a
+    // holding a panel for merging suspends the border handles - one gesture at a
     // time, or the same click means two things
-    var cu = selected === null ? cutAt(p[0], p[1]) : null;
-    var pn = cu ? null : panelAt(p[0], p[1]);
-    var changed = cu !== hover.cut || pn !== hover.panel;
+    var vi = selected === null ? handleAt(p[0], p[1]) : null;
+    var cu = selected === null && vi === null ? cutAt(p[0], p[1]) : null;
+    var pn = (cu || vi !== null) ? null : panelAt(p[0], p[1]);
+    var changed = cu !== hover.cut || pn !== hover.panel || vi !== hover.vertex;
     hover.cut = cu;
     hover.panel = pn;
+    hover.vertex = vi;
     if (selected !== null) {
       canvas.style.cursor = pn ? (canMerge(selected, pn) ? 'pointer' : 'not-allowed') : 'default';
+    } else if (vi !== null) {
+      canvas.style.cursor = 'move';
     } else {
-      canvas.style.cursor = cu ? (cu.node.dir === 'v' ? 'col-resize' : 'row-resize')
+      canvas.style.cursor = cu ? (Math.abs(cu.dir[0]) < 0.5 ? 'col-resize' : 'row-resize')
                                : (pn && !pn.merged ? 'crosshair' : (pn ? 'context-menu' : 'default'));
     }
     if (changed || pn) render();
@@ -1541,31 +1898,64 @@
 
   canvas.addEventListener('mouseleave', function () {
     if (drag) return;
-    hover.cut = null; hover.panel = null;
+    hover.cut = null; hover.panel = null; hover.vertex = null;
     render();
   });
 
   canvas.addEventListener('mousedown', function (e) {
     if (e.button !== 0 || selected !== null) return;
     var p = toPage(e);
-    var cu = cutAt(p[0], p[1]);
-    if (!cu) return;
+    // a corner takes priority over the line it sits on: it is the smaller target
+    var vi = handleAt(p[0], p[1]);
+    var cu = vi === null ? cutAt(p[0], p[1]) : null;
+    if (vi === null && !cu) return;
     e.preventDefault();
     push();
-    // where every other border stands right now, to be put back after each move
-    drag = { entry: cu, moved: false, want: readCuts(tree, rootPoly(), {}) };
-    say('경계선을 옮기는 중 — Alt를 누르면 기울어집니다.');
+    if (vi !== null) {
+      // an end of exactly one border turns that whole border; anything else is
+      // a corner in the middle, and moving it bends what meets there
+      var owning = view.cuts.filter(function (run) {
+        var ends = runEnds(run);
+        return ends && (ends.i === vi || ends.j === vi);
+      });
+      if (owning.length === 1) {
+        var run = owning[0], ends = runEnds(run);
+        var cross = {};
+        run.list.forEach(function (k) { cross[k] = crossingDir(k, run.dir); });
+        drag = {
+          vertex: vi, run: run, pivot: ends.i === vi ? ends.j : ends.i,
+          from: vertsSnapshot(), cross: cross
+        };
+        say('경계선을 기울이는 중 — 반대쪽 끝을 축으로 돕니다.');
+      } else {
+        drag = { vertex: vi, from: vertsSnapshot() };
+        say('꼭짓점을 옮기는 중 — 여기 모인 선들이 따라 꺾입니다.');
+      }
+      return;
+    }
+    var cross = {};
+    cu.list.forEach(function (k) { cross[k] = crossingDir(k, cu.dir); });
+    drag = {
+      run: cu, start: p, from: vertsSnapshot(), axis: runAxis(cu),
+      anchor: mesh.verts[cu.list[0]].slice(), cross: cross
+    };
+    say('경계선을 옮기는 중 — 기울이려면 꼭짓점을 끄세요.');
   });
 
   window.addEventListener('mouseup', function () {
     if (!drag) return;
     drag = null;
+    // A click follows every release, and after a tilt the pointer has been
+    // carried well clear of the border it was turning - which used to read as a
+    // click on empty panel, and cut it.
+    swallowClick = true;
     say('');
     render();
   });
 
   canvas.addEventListener('click', function (e) {
     if (drag) return;
+    if (swallowClick) { swallowClick = false; return; }
     var p = toPage(e);
     var pn = panelAt(p[0], p[1]);
 
@@ -1578,13 +1968,14 @@
       return;
     }
 
-    if (cutAt(p[0], p[1])) return;          // that press was a drag, not a cut
+    // that press was a drag, not a cut
+    if (handleAt(p[0], p[1]) !== null || cutAt(p[0], p[1])) return;
     if (!pn) return;
     if (pn.merged) {
       say('합친 칸은 쪼갤 수 없습니다. 오른쪽 클릭으로 먼저 푸세요.');
       return;
     }
-    splitLeaf(pn, p[0], p[1], e.altKey ? (state.dir === 'h' ? 'v' : 'h') : state.dir);
+    splitPanel(pn, p[0], p[1], e.altKey ? (state.dir === 'h' ? 'v' : 'h') : state.dir);
   });
 
   // The whole merge happens on this button: one right-click selects a panel,
@@ -1645,18 +2036,21 @@
     say('합친 칸을 풀었습니다.');
   }
 
-  function splitLeaf(entry, x, y, dir) {
+  function splitPanel(entry, x, y, dir) {
+    if (!entry.face) return;
     var bb = polyBBox(entry.poly);
     var at = clamp(dir === 'v' ? (x - bb.x) / bb.w : (y - bb.y) / bb.h, 0.08, 0.92);
-    var r = cutRegion(entry.poly, dir, at, 0);
-    var least = state.gutter + 24;
-    if (!r || Math.min(polyBBox(r.A).w, polyBBox(r.A).h, polyBBox(r.B).w, polyBBox(r.B).h) < least) {
+
+    // Cut a copy first: if what comes out is too tight to work in, the real page
+    // never sees it.
+    var probe = cloneMesh(mesh);
+    var face = probe.faces.filter(function (f) { return f.id === entry.face.id; })[0];
+    if (!face || !splitFace(probe, face, dir, at, 0) || !meshValid(probe, state.gutter + 24)) {
       say('여기서 더 쪼개면 칸이 간격보다 작아집니다.');
       return;
     }
     push();
-    var n = entry.node;
-    n.dir = dir; n.at = at; n.tilt = 0; n.a = leaf(); n.b = leaf();
+    mesh = probe;
     hover.panel = null;
     render();
     say('');
@@ -1866,9 +2260,9 @@
   }
 
   var presetHost = document.getElementById('presets');
-  // 5 is 2칸 3단, which is the tree the page starts on
+  // 5 is 2칸 3단, which is the layout the page starts on
   chips(presetHost, PRESETS, function (e) {
-    replaceTree(e[1]());
+    replaceMesh(buildPreset(e[1], pageRect()));
     render();
     say('');
   }, 5);
@@ -2033,8 +2427,7 @@
   // Reaching for the auto controls replaces whatever is on the page, so it goes
   // on the history stack like any other change.
   function regenerate() {
-    var m = Math.min(state.margin, Math.min(state.w, state.h) / 2 - 10);
-    replaceTree(autoTree(state.count, state.dyn, state.seed, state.w - m * 2, state.h - m * 2));
+    replaceMesh(autoMesh(state.count, state.dyn, state.seed, pageRect()));
     press(presetHost, null);
     render();
   }
@@ -2046,7 +2439,7 @@
   });
 
   document.getElementById('reset').addEventListener('click', function () {
-    replaceTree(leaf());
+    replaceMesh(newMesh(pageRect()));
     // this is exactly the 1칸 preset, so light it
     press(presetHost, presetHost.children[0]);
     render();
