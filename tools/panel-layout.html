@@ -124,6 +124,8 @@
       font-size: 11px; font-weight: 600; letter-spacing: 0.2em;
       text-transform: uppercase; color: #7eb8b0;
     }
+    /* the first heading has nothing above it to be ruled off from */
+    .group.first { margin-top: 0; padding-top: 0; border-top: none; }
 
     /* The picker carries the same card as the panel, so the two read as one set
        of controls even though one runs across and the other down. */
@@ -153,6 +155,30 @@
       white-space: nowrap;
     }
     .picker .chips { flex: 1 1 auto; min-width: 0; }
+    /* Sliders in a full-width card would run the whole way across, which makes
+       them hard to aim. Two side by side, each capped, reads better. */
+    .picker .pair {
+      flex: 1 1 auto; min-width: 0;
+      display: flex; align-items: flex-end; gap: 24px; flex-wrap: wrap;
+      padding-top: 4px;
+    }
+    .picker .pair > div { flex: 1 1 220px; max-width: 320px; }
+    /* These labels are nested a level deeper than `.field > label`, so without
+       saying it again they fall back to body type and tower over the row. */
+    .picker .pair label {
+      display: block;
+      font-size: 11px; font-weight: 600; letter-spacing: 0.12em;
+      text-transform: uppercase; color: #666; margin-bottom: 4px;
+    }
+    .picker .pair .btn { flex: 0 0 auto; }
+    /* what the slider numbers mean, kept beside them rather than on their own row */
+    .picker .pair .side {
+      flex: 0 0 auto; max-width: none;
+      display: flex; align-items: flex-end; gap: 18px;
+    }
+    .picker .pair .side > div { flex: 0 0 auto; }
+    .picker .pair .side .chips { display: flex; }
+    .picker .group { margin-bottom: 14px; }
 
     .chips { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
     /* Sized to their labels and wrapping, rather than sharing out a column */
@@ -305,66 +331,81 @@
     <p>만화 페이지의 칸 배치를 짜서 벡터 셰이프 레이어가 든 PSD로 내려받습니다. 칸마다 레이어 하나씩, 읽는 순서대로 이름이 붙습니다. 포토샵에서 열면 직접 선택 도구로 모서리를 그대로 옮길 수 있습니다.</p>
   </div>
 
-  <!-- Both starting points sit across the top: pick a layout, or pick a page.
-       The canvas below is where either one gets taken apart by hand. -->
+  <!-- What is being made comes first: the page, then the layout on it. Both are
+       mostly rows of chips and want the full width; how a panel is drawn is a
+       column of sliders and sits beside the canvas. -->
   <div class="picker">
+    <p class="group first">페이지</p>
+    <!-- Two kinds of page, and not the same kind of thing. A printed page is a
+         physical size and the resolution decides how many pixels that comes to;
+         a screen page is a pixel count and has no physical size at all. -->
     <div class="field">
-      <label>배치</label>
-      <div class="chips row" id="presets"></div>
-    </div>
-
-    <!-- Two kinds of page, and they are not the same kind of thing. A printed
-         page is a physical size and the resolution decides how many pixels that
-         comes to; a screen page is a pixel count and has no physical size at
-         all. Keeping them in one list is what made the resolution look like a
-         setting that always applies. -->
-    <div class="field">
-      <label>인쇄용</label>
+      <label>인쇄용 크기</label>
       <div class="chips row" id="print-pages"></div>
     </div>
-
     <div class="field">
-      <label>화면용</label>
+      <label>화면용 크기</label>
       <div class="chips row" id="screen-pages"></div>
+    </div>
+    <!-- The sliders that stand in for a preset when none of them fits, with the
+         two things that say what their numbers mean sitting beside them. -->
+    <div class="field">
+      <label>사용자 크기</label>
+      <div class="pair">
+        <div>
+          <!-- step 1, because a coarser one puts half the presets between two
+               notches and the slider snaps them off the moment it is touched -->
+          <label for="w">가로 <span class="val" id="wv">152</span> <span class="unit-label">mm</span></label>
+          <input type="range" id="w" min="40" max="600" step="1" value="152">
+        </div>
+        <div>
+          <label for="h">세로 <span class="val" id="hv">225</span> <span class="unit-label">mm</span></label>
+          <input type="range" id="h" min="40" max="800" step="1" value="225">
+        </div>
+        <div class="side">
+          <div>
+            <label>단위</label>
+            <div class="chips row" id="units"></div>
+          </div>
+          <!-- Only shown in mm. A page measured in pixels has no resolution
+               worth choosing, and offering the choice would say otherwise. -->
+          <div id="dpi-field">
+            <label>해상도</label>
+            <div class="chips row" id="dpis"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="picker">
+    <p class="group first">배치</p>
+    <div class="field">
+      <label>프리셋</label>
+      <div class="chips row" id="presets"></div>
+    </div>
+    <div class="field">
+      <label>자동 배치</label>
+      <div class="pair">
+        <div>
+          <label for="count">칸 개수 <span class="val" id="countv">6</span></label>
+          <input type="range" id="count" min="2" max="16" step="1" value="6">
+        </div>
+        <div>
+          <label for="dyn">역동성 <span class="val" id="dynv">40</span>%</label>
+          <input type="range" id="dyn" min="0" max="100" step="1" value="40">
+        </div>
+        <button class="btn btn-ghost btn-sm" id="reseed">새 배치</button>
+      </div>
     </div>
   </div>
 
   <div class="studio">
     <!-- ── Controls ── -->
     <div class="panel">
-      <div class="field">
-        <div class="colors">
-          <div>
-            <label for="fill">채움색</label>
-            <input type="color" id="fill" value="#ffffff">
-          </div>
-          <div>
-            <label for="stroke">테두리색</label>
-            <input type="color" id="stroke" value="#000000">
-          </div>
-        </div>
-      </div>
-
-      <div class="field">
-        <label>단위</label>
-        <div class="chips row" id="units"></div>
-      </div>
-      <div class="field">
-        <!-- step 1, because a coarser one puts half the presets between two
-             notches and the slider snaps them off the moment it is touched -->
-        <label for="w">가로 <span class="val" id="wv">210</span> <span class="unit-label">mm</span></label>
-        <input type="range" id="w" min="40" max="600" step="1" value="210">
-      </div>
-      <div class="field">
-        <label for="h">세로 <span class="val" id="hv">297</span> <span class="unit-label">mm</span></label>
-        <input type="range" id="h" min="40" max="800" step="1" value="297">
-      </div>
-      <!-- Only shown in mm. A page measured in pixels has no resolution worth
-           choosing, and offering the choice would say otherwise. -->
-      <div class="field" id="dpi-field">
-        <label>해상도</label>
-        <div class="chips row" id="dpis"></div>
-      </div>
+      <!-- ── 칸 모양 ── how a panel is drawn, once the layout has decided where
+           it goes. -->
+      <p class="group first">칸 모양</p>
       <div class="field">
         <!-- Defaults are sized for the default page, A4 at 300dpi: roughly 12mm
              of margin, a 4.7mm gutter and a 0.85mm border. -->
@@ -383,27 +424,30 @@
         <label for="radius">모서리 둥글기 <span class="val" id="radiusv">0</span> px</label>
         <input type="range" id="radius" min="0" max="160" step="1" value="0">
       </div>
+      <div class="field">
+        <div class="colors">
+          <div>
+            <label for="fill">채움색</label>
+            <input type="color" id="fill" value="#ffffff">
+          </div>
+          <div>
+            <label for="stroke">테두리색</label>
+            <input type="color" id="stroke" value="#000000">
+          </div>
+        </div>
+      </div>
 
-      <p class="group">자동 배치</p>
-      <div class="field">
-        <label for="count">칸 개수 <span class="val" id="countv">6</span></label>
-        <input type="range" id="count" min="2" max="16" step="1" value="6">
-      </div>
-      <div class="field">
-        <label for="dyn">역동성 <span class="val" id="dynv">40</span>%</label>
-        <input type="range" id="dyn" min="0" max="100" step="1" value="40">
-      </div>
-      <div class="field">
-        <button class="btn btn-ghost btn-sm" id="reseed">새 배치</button>
-      </div>
-
+      <!-- ── 보기 ── things that change what is on screen and nothing else. -->
+      <p class="group">보기</p>
       <!-- A thumbnail to lay the panels over. Lives under the page on screen and
-           nowhere else - none of the exports ever see it. -->
-      <p class="group">참고 이미지</p>
+           nowhere else; no export sees it. Hiding keeps it loaded, because what
+           you usually want is to glance at the layout without it and put it
+           back - not to go and find the file again. -->
       <div class="field">
         <input type="file" id="ref-file" accept="image/*" hidden>
         <div class="row-btns">
-          <button class="btn btn-ghost btn-sm" id="ref-pick">불러오기</button>
+          <button class="btn btn-ghost btn-sm" id="ref-pick">참고 이미지</button>
+          <button class="btn btn-ghost btn-sm" id="ref-hide" hidden>숨기기</button>
           <button class="btn btn-ghost btn-sm" id="ref-clear" hidden>지우기</button>
         </div>
         <p class="hint-sm">캔버스에 파일을 끌어다 놓아도 됩니다</p>
@@ -421,24 +465,32 @@
           <button class="btn btn-ghost btn-sm" id="ref-size">이미지 크기로 페이지 맞추기</button>
         </div>
       </div>
+
+      <div class="field">
+        <!-- On by default: the reading order decides what the PSD folders are
+             called, and without the numbers on the page that setting changes
+             nothing you can see until the file is opened somewhere else. -->
+        <div class="row-btns">
+          <button class="chip" type="button" id="numbers" aria-pressed="true">칸 번호</button>
+          <!-- beside the numbers, because the numbers are the only place the
+               reading order shows before the file is opened somewhere else -->
+          <div class="chips row" id="orders"></div>
+          <button class="chip" type="button" id="order-reset" hidden>순서 자동으로</button>
+        </div>
+        <p class="hint-sm">번호를 다른 칸에 끌어다 놓으면 두 칸의 순서가 바뀝니다</p>
+      </div>
     </div>
 
     <!-- ── Preview ── -->
     <div class="stage">
-      <!-- the tools that act on the canvas live next to it -->
+      <!-- What the mouse does on the canvas, and the two ways to take it back.
+           Everything that describes the page or the panels lives in the cards
+           above and the panel beside. -->
       <div class="stage-bar">
         <label>쪼개기</label>
         <div class="chips row" id="dirs"></div>
-        <label>읽는 순서</label>
-        <div class="chips row" id="orders"></div>
-        <!-- Off by default: on a plain grid the order is obvious, and a badge on
-             every panel fights with the layout you are trying to judge. It earns
-             its place on irregular pages, and as the only visible answer to the
-             reading-order buttons beside it. -->
-        <button class="chip" type="button" id="numbers" aria-pressed="false">번호</button>
         <span class="spacer"></span>
         <button class="btn btn-ghost btn-sm" id="undo" disabled>되돌리기</button>
-        <button class="btn btn-ghost btn-sm" id="reset">한 칸으로</button>
       </div>
       <div class="canvas-wrap"><canvas id="preview"></canvas></div>
       <p class="meta" id="meta"></p>
@@ -1384,18 +1436,22 @@
     // w/h are always the pixel size everything else is drawn and exported at.
     // In mm they are derived from mmW/mmH and the resolution; in px they are
     // what the sliders set directly.
-    unit: 'mm', mmW: 210, mmH: 297, dpi: 300,
-    w: 2480, h: 3508, margin: 140, gutter: 56, sw: 10, radius: 0,
+    unit: 'mm', mmW: 152, mmH: 225, dpi: 300,
+    w: 1795, h: 2657, margin: 140, gutter: 56, sw: 10, radius: 0,
     fill: '#ffffff', stroke: '#000000',
-    dir: 'h', rtl: true, numbers: false, count: 6, dyn: 40, seed: 7,
+    dir: 'h', rtl: false, numbers: true, count: 6, dyn: 40, seed: 7,
     refFit: 'contain', refOpacity: 50
   };
 
-  var ref = { img: null, url: null };
+  var ref = { img: null, url: null, hidden: false };
 
   var mesh = null;          // built once the page rectangle is known
   var groups = [];          // each entry: face ids that are drawn as one panel
   var selected = null;      // face id waiting for a partner to merge with
+  // Face ids in reading order, once someone has said otherwise. Null means work
+  // it out from where the panels are, which is right until it is not - a
+  // staggered page can read in an order no rule about tiers will guess.
+  var order = null;
   var history = [];
 
   var canvas = document.getElementById('preview');
@@ -1405,7 +1461,7 @@
   var undoBtn = document.getElementById('undo');
 
   var view = { panels: [], cuts: [], broken: 0 };
-  var hover = { panel: null, cut: null, vertex: null, x: 0, y: 0 };
+  var hover = { panel: null, cut: null, vertex: null, badge: null, x: 0, y: 0 };
   var drag = null;
   var swallowClick = false;
 
@@ -1426,7 +1482,8 @@
   function push() {
     history.push({
       mesh: cloneMesh(mesh),
-      groups: groups.map(function (g) { return g.slice(); })
+      groups: groups.map(function (g) { return g.slice(); }),
+      order: order && order.slice()
     });
     if (history.length > 60) history.shift();
     undoBtn.disabled = false;
@@ -1437,6 +1494,7 @@
     var was = history.pop();
     mesh = was.mesh;
     groups = was.groups;
+    order = was.order;
     selected = null;
     undoBtn.disabled = !history.length;
     render();
@@ -1449,7 +1507,23 @@
     push();
     mesh = next;
     groups = [];
+    order = null;                 // a new layout reads in its own order
     selected = null;
+  }
+
+  // The reading order as it stands: what was asked for, with anything that has
+  // appeared since dropped in where the automatic rule would put it, and
+  // anything that has gone quietly forgotten.
+  function orderedFaces() {
+    var auto = readingOrder(mesh, state.rtl);
+    if (!order) return auto;
+    var byId = {}, out = [], taken = {};
+    auto.forEach(function (f) { byId[f.id] = f; });
+    order.forEach(function (id) {
+      if (byId[id]) { out.push(byId[id]); taken[id] = true; }
+    });
+    auto.forEach(function (f) { if (!taken[f.id]) out.push(f); });
+    return out;
   }
 
   // The page rectangle moves whenever the format, the margin or the resolution
@@ -1541,12 +1615,12 @@
   // merged set collapsed into a single panel that takes the reading position of
   // its first member.
   function buildPanels() {
-    var order = readingOrder(mesh, state.rtl);
+    var reading = orderedFaces();
     var byId = {};
-    order.forEach(function (f) { byId[f.id] = f; });
+    reading.forEach(function (f) { byId[f.id] = f; });
 
     var panels = [], done = {}, broken = 0;
-    order.forEach(function (f) {
+    reading.forEach(function (f) {
       var g = groupOf(f.id);
       if (!g) {
         panels.push({ ids: [f.id], face: f, poly: facePoly(mesh, f), merged: false });
@@ -1615,6 +1689,7 @@
     // same box, so without this the difference between A4 and 국판 never
     // reaches the screen.
     var zoom = Math.round(100 / viewScale());
+    orderReset.hidden = !order;
     meta.textContent = size + ' · ' + zoom + '% · ' + view.panels.length + '칸 · ' +
                        anchors + ' anchor points' +
                        (joined ? ' · 합친 칸 ' + joined + '개' : '') +
@@ -1627,7 +1702,7 @@
   // from paintPage - which is the one path the exports go through, so the
   // thumbnail cannot leak into a file no matter what is on screen.
   function paintUnderlay(c) {
-    if (!ref.img) return;
+    if (!ref.img || ref.hidden) return;
     var box = refBox();
     c.save();
     c.globalAlpha = state.refOpacity / 100;
@@ -1713,21 +1788,39 @@
       c.restore();
     }
 
-    if (!state.numbers) return;
+    if (!state.numbers) {
+      view.panels.forEach(function (l) { l.badge = null; });
+      return;
+    }
+    // where the panel being dropped on would land, drawn under the badges
+    if (drag && drag.badge !== undefined && hover.panel && hover.panel !== view.panels[drag.badge]) {
+      c.save();
+      c.fillStyle = 'rgba(126,184,176,0.22)';
+      c.fill(polyPath(hover.panel.poly));
+      c.restore();
+    }
     view.panels.forEach(function (l, i) {
-      if (!l.knots) return;
+      if (!l.knots) { l.badge = null; return; }
       var ctr = interiorPoint(insetPoly(l.poly, state.gutter / 2));
+      l.badge = ctr;                                   // so it can be picked up
+      var held = drag && drag.badge === i;
+      var at = held ? [hover.x, hover.y] : ctr;
       var r = 17 * s;
       c.save();
       c.beginPath();
-      c.arc(ctr[0], ctr[1], r, 0, Math.PI * 2);
-      c.fillStyle = 'rgba(126,184,176,0.92)';
+      c.arc(at[0], at[1], r, 0, Math.PI * 2);
+      c.fillStyle = held ? '#ef4e23' : 'rgba(126,184,176,0.92)';
       c.fill();
-      c.fillStyle = '#0a0a0a';
+      if (hover.badge === i && !drag) {
+        c.lineWidth = 2 * s;
+        c.strokeStyle = '#fff';
+        c.stroke();
+      }
+      c.fillStyle = held ? '#fff' : '#0a0a0a';
       c.font = '600 ' + Math.round(20 * s) + 'px -apple-system, Segoe UI, sans-serif';
       c.textAlign = 'center';
       c.textBaseline = 'middle';
-      c.fillText(String(i + 1), ctr[0], ctr[1] + 1 * s);
+      c.fillText(String(i + 1), at[0], at[1] + 1 * s);
       c.restore();
     });
   }
@@ -1815,6 +1908,33 @@
       if (view.panels[i].ids.indexOf(id) >= 0) return view.panels[i];
     }
     return null;
+  }
+
+  // The number badge under the hand, which is how the reading order gets said
+  // by hand rather than guessed from where the panels sit.
+  function badgeAt(x, y) {
+    if (!state.numbers) return null;
+    var r = 17 * viewScale();
+    for (var i = 0; i < view.panels.length; i++) {
+      var b = view.panels[i].badge;
+      if (b && Math.hypot(x - b[0], y - b[1]) <= r) return i;
+    }
+    return null;
+  }
+
+  // Two panels trade places in the reading order. Everything else stays where
+  // it was, which is what makes it predictable to do twice.
+  function swapPanels(a, b) {
+    var ids = orderedFaces().map(function (f) { return f.id; });
+    var ia = ids.indexOf(view.panels[a].ids[0]);
+    var ib = ids.indexOf(view.panels[b].ids[0]);
+    if (ia < 0 || ib < 0 || ia === ib) return false;
+    push();
+    var t = ids[ia];
+    ids[ia] = ids[ib];
+    ids[ib] = t;
+    order = ids;
+    return true;
   }
 
   // A corner of a border, close enough to grab. Page corners are left out - they
@@ -1952,6 +2072,12 @@
     var p = toPage(e);
     hover.x = p[0]; hover.y = p[1]; hover.alt = e.altKey;
 
+    if (drag && drag.badge !== undefined) {
+      hover.panel = panelAt(p[0], p[1]);
+      render();
+      return;
+    }
+
     if (drag) {
       var undoVerts = vertsSnapshot();
       if (drag.pivot !== undefined) pivotRun(drag, p);
@@ -1970,15 +2096,19 @@
 
     // holding a panel for merging suspends the border handles - one gesture at a
     // time, or the same click means two things
-    var vi = selected === null ? handleAt(p[0], p[1]) : null;
-    var cu = selected === null && vi === null ? cutAt(p[0], p[1]) : null;
+    var bi = selected === null ? badgeAt(p[0], p[1]) : null;
+    var vi = selected === null && bi === null ? handleAt(p[0], p[1]) : null;
+    var cu = selected === null && bi === null && vi === null ? cutAt(p[0], p[1]) : null;
     var pn = (cu || vi !== null) ? null : panelAt(p[0], p[1]);
-    var changed = cu !== hover.cut || pn !== hover.panel || vi !== hover.vertex;
+    var changed = cu !== hover.cut || pn !== hover.panel || vi !== hover.vertex || bi !== hover.badge;
     hover.cut = cu;
     hover.panel = pn;
     hover.vertex = vi;
+    hover.badge = bi;
     if (selected !== null) {
       canvas.style.cursor = pn ? (canMerge(selected, pn) ? 'pointer' : 'not-allowed') : 'default';
+    } else if (bi !== null) {
+      canvas.style.cursor = 'grab';
     } else if (vi !== null) {
       canvas.style.cursor = 'move';
     } else {
@@ -1990,13 +2120,22 @@
 
   canvas.addEventListener('mouseleave', function () {
     if (drag) return;
-    hover.cut = null; hover.panel = null; hover.vertex = null;
+    hover.cut = null; hover.panel = null; hover.vertex = null; hover.badge = null;
     render();
   });
 
   canvas.addEventListener('mousedown', function (e) {
     if (e.button !== 0 || selected !== null) return;
     var p = toPage(e);
+    // a number badge sits inside a panel, where a click would otherwise cut it
+    var bi = badgeAt(p[0], p[1]);
+    if (bi !== null) {
+      e.preventDefault();
+      drag = { badge: bi };
+      say('번호를 다른 칸에 놓으면 두 칸의 순서가 바뀝니다.');
+      render();
+      return;
+    }
     // a corner takes priority over the line it sits on: it is the smaller target
     var vi = handleAt(p[0], p[1]);
     var cu = vi === null ? cutAt(p[0], p[1]) : null;
@@ -2055,6 +2194,20 @@
 
   window.addEventListener('mouseup', function () {
     if (!drag) return;
+    if (drag.badge !== undefined) {
+      var onto = panelAt(hover.x, hover.y);
+      var from = view.panels[drag.badge];
+      drag = null;
+      swallowClick = true;
+      if (onto && onto !== from && swapPanels(view.panels.indexOf(from), view.panels.indexOf(onto))) {
+        render();
+        say('두 칸의 순서를 바꿨습니다.');
+      } else {
+        render();
+        say('');
+      }
+      return;
+    }
     drag = null;
     // pieces that ended up exactly back in line become one border again
     if (weldMesh(mesh)) repairMesh(mesh);
@@ -2452,7 +2605,7 @@
     showSize();
     showMetrics();
     render();
-  }, 0);
+  }, 3);      // 신국판, the size the page starts on
 
   chips(screenHost, SCREEN_PAGES, function (e) {
     // The margins are left exactly as they are. Scaling them to the new page
@@ -2503,7 +2656,7 @@
   chips(document.getElementById('orders'), [['우 → 좌', true], ['좌 → 우', false]], function (e) {
     state.rtl = e[1];
     render();
-  }, 0);
+  }, 1);      // 좌 → 우
 
   // a plain on/off, not one of a set, so it toggles itself rather than going
   // through the radio-style chips helper above
@@ -2512,6 +2665,14 @@
     state.numbers = !state.numbers;
     numbersBtn.setAttribute('aria-pressed', String(state.numbers));
     render();
+  });
+
+  var orderReset = document.getElementById('order-reset');
+  orderReset.addEventListener('click', function () {
+    push();
+    order = null;
+    render();
+    say('읽는 순서를 자동으로 되돌렸습니다.');
   });
 
   var slider = {};
@@ -2551,13 +2712,9 @@
     say('');
   });
 
-  document.getElementById('reset').addEventListener('click', function () {
-    replaceMesh(newMesh(pageRect()));
-    // this is exactly the 1칸 preset, so light it
-    press(presetHost, presetHost.children[0]);
-    render();
-    say('');
-  });
+  // No button for clearing the page: the 1칸 preset already does exactly that,
+  // and two names for one thing in two places is how the delete gesture went
+  // wrong.
 
   undoBtn.addEventListener('click', undo);
 
@@ -2572,7 +2729,16 @@
 
   var refOpts = document.getElementById('ref-opts');
   var refClear = document.getElementById('ref-clear');
+  var refHide = document.getElementById('ref-hide');
   var refFile = document.getElementById('ref-file');
+
+  function showRefButtons() {
+    var has = !!ref.img;
+    refClear.hidden = !has;
+    refHide.hidden = !has;
+    refOpts.hidden = !has || ref.hidden;      // nothing to adjust while it is out of sight
+    refHide.textContent = ref.hidden ? '보이기' : '숨기기';
+  }
 
   function loadRef(file) {
     if (!file || !/^image\//.test(file.type)) {
@@ -2585,8 +2751,8 @@
       if (ref.url) URL.revokeObjectURL(ref.url);
       ref.img = img;
       ref.url = url;
-      refOpts.hidden = false;
-      refClear.hidden = false;
+      ref.hidden = false;               // a picture just chosen is meant to be seen
+      showRefButtons();
       render();
       say('참고 이미지 ' + img.naturalWidth + ' × ' + img.naturalHeight + ' px — 화면에만 보이고 저장되는 파일에는 들어가지 않습니다.');
     };
@@ -2603,12 +2769,19 @@
     e.target.value = '';          // so picking the same file twice still fires
   });
 
+  refHide.addEventListener('click', function () {
+    ref.hidden = !ref.hidden;
+    showRefButtons();
+    render();
+    say(ref.hidden ? '참고 이미지를 숨겼습니다 — 불러온 채로 있습니다.' : '참고 이미지를 다시 켰습니다.');
+  });
+
   refClear.addEventListener('click', function () {
     if (ref.url) URL.revokeObjectURL(ref.url);
     ref.img = null;
     ref.url = null;
-    refOpts.hidden = true;
-    refClear.hidden = true;
+    ref.hidden = false;
+    showRefButtons();
     render();
     say('참고 이미지를 지웠습니다.');
   });
