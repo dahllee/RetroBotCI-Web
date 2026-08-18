@@ -281,8 +281,11 @@
       color: #7eb8b0; font-size: 12px; line-height: 1.5; letter-spacing: 0.04em;
       pointer-events: none;
       box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+      opacity: 1; transition: opacity 260ms ease;   /* matches TIP_FADE */
     }
+    #tip.fading { opacity: 0; }
     #tip:empty { display: none; }
+    @media (prefers-reduced-motion: reduce) { #tip { transition: none; } }
 
     /* ── Footer ── */
     footer {
@@ -1552,10 +1555,39 @@
   // coordinates. Null until the pointer has been there at all, and again once
   // it leaves - a message raised from a button should not chase a stale point.
   var tipAt = null;
+  var tipTimer = null;
+  var TIP_LINGER = 1500;
+  var TIP_FADE = 260;                              // matches #tip's transition
 
   function say(msg) {
-    tip.textContent = msg || '';
-    if (msg) placeTip();
+    if (tipTimer) { clearTimeout(tipTimer); tipTimer = null; }
+    if (!msg) { dissolve(); return; }
+    tip.classList.remove('fading');
+    tip.textContent = msg;
+    placeTip();
+    fadeTip();
+  }
+
+  // Nothing clears a message but the next one, and a message sitting on the
+  // canvas is in the way once it has been read. A word raised at the start of a
+  // drag belongs to that drag, though, so the clock only runs between them.
+  function fadeTip() {
+    tipTimer = setTimeout(function () {
+      if (drag) { fadeTip(); return; }
+      dissolve();
+    }, TIP_LINGER);
+  }
+
+  // Let it go rather than cut it off - the text has to stay in place while it
+  // thins out, so the element is only emptied once the fade is over.
+  function dissolve() {
+    if (!tip.textContent) return;
+    tip.classList.add('fading');
+    tipTimer = setTimeout(function () {
+      tip.classList.remove('fading');
+      tip.textContent = '';
+      tipTimer = null;
+    }, TIP_FADE);
   }
 
   function placeTip() {
@@ -1581,7 +1613,8 @@
   function trackTip(e) {
     var box = tipWrap.getBoundingClientRect();
     tipAt = [e.clientX - box.left + tipWrap.scrollLeft, e.clientY - box.top + tipWrap.scrollTop];
-    if (tip.textContent) placeTip();
+    // only where the next message will go - one already up stays where it was
+    // raised. A word that follows the hand across the page is read twice.
   }
 
   function mmToPx(mm) { return Math.round(mm / MM_PER_INCH * state.dpi); }
@@ -2427,7 +2460,9 @@
   });
 
   window.addEventListener('mouseup', function () {
-    if (!drag) return;
+    // A refusal is raised on the press and starts no drag, so without this it
+    // would be the one message left hanging about after the hand lets go.
+    if (!drag) { say(''); return; }
     if (drag.badge !== undefined) {
       var onto = panelAt(hover.x, hover.y);
       var from = view.panels[drag.badge];
