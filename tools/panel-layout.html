@@ -244,6 +244,7 @@
       background: #151515;
       padding: 20px;
       overflow: auto;
+      position: relative;
     }
     /* The checkerboard belongs to the page, not to the room. On the wrapper it
        made the whole panel look like the document and hid where the paper
@@ -268,7 +269,20 @@
     }
     .note strong { color: #7eb8b0; font-weight: 600; }
     .note + .note { margin-top: 10px; }
-    #status { font-size: 12px; color: #7eb8b0; min-height: 18px; letter-spacing: 0.04em; }
+    /* What the tool has to say belongs where the eye already is. This used to be
+       a line under the canvas, which on any real page sat a screenful below the
+       fold - so every message was written somewhere nobody could see it. */
+    #tip {
+      position: absolute; left: 0; top: 0; z-index: 5;
+      max-width: 22em;
+      padding: 5px 10px;
+      border: 1px solid #2c2c2c; border-radius: 3px;
+      background: rgba(12, 12, 12, 0.92);
+      color: #7eb8b0; font-size: 12px; line-height: 1.5; letter-spacing: 0.04em;
+      pointer-events: none;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    }
+    #tip:empty { display: none; }
 
     /* ── Footer ── */
     footer {
@@ -492,7 +506,7 @@
         <span class="spacer"></span>
         <button class="btn btn-ghost btn-sm" id="undo" disabled>되돌리기</button>
       </div>
-      <div class="canvas-wrap"><canvas id="preview"></canvas></div>
+      <div class="canvas-wrap"><canvas id="preview"></canvas><div id="tip"></div></div>
       <p class="meta" id="meta"></p>
       <div class="actions">
         <button class="btn btn-primary" id="dl-psd">PSD 다운로드</button>
@@ -500,11 +514,11 @@
         <button class="btn btn-ghost" id="dl-png">PNG</button>
         <button class="btn btn-ghost" id="copy-png">PNG 복사</button>
       </div>
-      <p id="status"></p>
       <p class="note">
         칸 안을 <strong>클릭</strong>하면 그 자리에서 갈라집니다. <kbd>Alt</kbd>를 누른 채 클릭하면 반대 방향으로 갈라집니다.
         경계선을 <strong>드래그</strong>하면 그 선이 통째로 움직이고, 선이 만나는 <strong>꼭짓점</strong>을 드래그하면 거기 모인 선들이 기울어집니다.
         <kbd>Alt</kbd>를 누른 채 경계선을 끌면 <strong>잡은 조각만</strong> 떨어져 나와, 한 단만 옆으로 어긋난 배치를 만들 수 있습니다.
+        선과 칸을 나눌 자리는 다른 경계선이나 페이지 한가운데에 <strong>달라붙습니다</strong> — 달라붙는 자리가 점선으로 표시되고, <kbd>Shift</kbd>를 누르면 붙지 않습니다.
         <kbd>Ctrl</kbd>+<kbd>Z</kbd>로 되돌립니다.
       </p>
       <p class="note">
@@ -839,23 +853,36 @@
       lines.push({ px: a[0] - uy * off, py: a[1] + ux * off, dx: ux, dy: uy });
     }
 
-    var pts = [];
+    var pts = [], flags = [], along = [];
     for (i = 0; i < n; i++) {
       var p = lines[(i - 1 + n) % n], q = lines[i];
       var den = p.dx * q.dy - p.dy * q.dx;
-      if (Math.abs(den) < 1e-9) { pts.push([q.px, q.py]); continue; }   // parallel
-      var t = ((q.px - p.px) * q.dy - (q.py - p.py) * q.dx) / den;
-      pts.push([p.px + p.dx * t, p.py + p.dy * t]);
+      if (Math.abs(den) < 1e-9) {
+        // Two edges of one straight line, meeting where a neighbouring panel
+        // butts into it. That is not a corner of this panel, and keeping it
+        // leaves a stub of an edge that turns inside out the moment the gutter
+        // is wider than the stub - taking the whole panel with it. Only a real
+        // step, where the two sides pull back by different amounts, earns a
+        // vertex here.
+        if (poly.inner[(i - 1 + n) % n] === poly.inner[i]) continue;
+        pts.push([q.px, q.py]);
+      } else {
+        var t = ((q.px - p.px) * q.dy - (q.py - p.py) * q.dx) / den;
+        pts.push([p.px + p.dx * t, p.py + p.dy * t]);
+      }
+      flags.push(poly.inner[i]);
+      along.push(lines[i]);
     }
+    if (pts.length < 3) return { pts: [], inner: [] };
 
     // A panel thinner than the gutter turns itself inside out here - an edge
     // comes back pointing the wrong way. Let it vanish, which is what the
     // caller already knows how to report.
-    for (i = 0; i < n; i++) {
-      var s = pts[i], e = pts[(i + 1) % n];
-      if ((e[0] - s[0]) * lines[i].dx + (e[1] - s[1]) * lines[i].dy < -1e-9) return { pts: [], inner: [] };
+    for (i = 0; i < pts.length; i++) {
+      var s = pts[i], e = pts[(i + 1) % pts.length];
+      if ((e[0] - s[0]) * along[i].dx + (e[1] - s[1]) * along[i].dy < -1e-9) return { pts: [], inner: [] };
     }
-    var out = { pts: pts, inner: poly.inner.slice() };
+    var out = { pts: pts, inner: flags };
     return polyArea(out) < 1 ? { pts: [], inner: [] } : out;
   }
 
@@ -1078,15 +1105,22 @@
     return { a: near, b: near === f ? made : f };
   }
 
-  // An edge is a page edge when no other face uses the same pair of vertices.
+  function atKey(p) { return Math.round(p[0] / 1e-3) + ',' + Math.round(p[1] / 1e-3); }
+
+  // An edge is a page edge when no other face runs along the same stretch.
   // Anything shared is a border between panels, and takes the gutter.
+  //
+  // Matched on where the ends are, not on which vertices they are. Taking a
+  // piece out of a border leaves one panel holding a copy of a corner and its
+  // neighbour holding the original; by number those two edges are strangers, and
+  // the gutter between the panels would quietly close up.
   function edgeShared(m, f, i) {
-    var a = f.vs[i], b = f.vs[(i + 1) % f.vs.length];
+    var a = atKey(m.verts[f.vs[i]]), b = atKey(m.verts[f.vs[(i + 1) % f.vs.length]]);
     for (var k = 0; k < m.faces.length; k++) {
       var g = m.faces[k];
       if (g === f) continue;
       for (var j = 0; j < g.vs.length; j++) {
-        var c = g.vs[j], d = g.vs[(j + 1) % g.vs.length];
+        var c = atKey(m.verts[g.vs[j]]), d = atKey(m.verts[g.vs[(j + 1) % g.vs.length]]);
         if ((a === c && b === d) || (a === d && b === c)) return true;
       }
     }
@@ -1129,7 +1163,10 @@
     m.faces.forEach(function (f) {
       for (var i = 0; i < f.vs.length; i++) {
         var a = f.vs[i], b = f.vs[(i + 1) % f.vs.length];
-        var k = Math.min(a, b) + '-' + Math.max(a, b);
+        // keyed by where the edge is, so the two faces along one border do not
+        // each contribute a copy of it just because they hold different vertices
+        var ka = atKey(m.verts[a]), kb = atKey(m.verts[b]);
+        var k = ka < kb ? ka + '|' + kb : kb + '|' + ka;
         if (seen[k] || !edgeShared(m, f, i)) continue;
         // Two vertices left sitting on top of each other make an edge of no
         // length and no direction, which would then count as parallel to
@@ -1187,26 +1224,71 @@
     });
   }
 
-  function detachSegment(m, seg, run) {
-    var shared = [seg.a, seg.b].filter(function (vi) {
+  // Does this panel carry on along the same line past that corner, rather than
+  // turning away from it? If it does, the piece under the hand is a whole edge
+  // of the panel on one side and only part of the edge on the other.
+  function continuesAlong(m, f, vi, seg, dir) {
+    var n = f.vs.length, i = f.vs.indexOf(vi);
+    if (i < 0) return false;
+    var other = seg.a === vi ? seg.b : seg.a;
+    var nb = [f.vs[(i + 1) % n], f.vs[(i - 1 + n) % n]];
+    for (var k = 0; k < 2; k++) {
+      if (nb[k] === other) continue;                 // that way is the piece itself
+      var p = m.verts[vi], q = m.verts[nb[k]];
+      var dx = q[0] - p[0], dy = q[1] - p[1], L = Math.hypot(dx, dy);
+      if (L < 1e-6) continue;
+      if (Math.abs(dir[0] * (dy / L) - dir[1] * (dx / L)) < 0.05) return true;
+    }
+    return false;
+  }
+
+  // Why a piece cannot be taken out of its line, if it cannot.
+  //   'alone'     the border runs in one piece, so there is nothing to take out
+  //   'staggered' the borders crossing it on either side do not meet, so a
+  //               panel along the piece runs on past the corner. Pulling the
+  //               piece away would notch that panel, and there is no telling
+  //               from the gesture whether that was meant - the same drag reads
+  //               as moving one panel's whole edge or half of the other's.
+  function detachSnag(m, seg, run) {
+    var shared = sharedEnds(seg, run);
+    if (!shared.length) return 'alone';
+    var sides = facesAlong(m, seg.a, seg.b);
+    if (sides.length !== 2) return 'alone';
+    var snag = null;
+    shared.forEach(function (vi) {
+      sides.forEach(function (f) {
+        if (continuesAlong(m, f, vi, seg, run.dir)) snag = 'staggered';
+      });
+    });
+    return snag;
+  }
+
+  function sharedEnds(seg, run) {
+    return [seg.a, seg.b].filter(function (vi) {
       return run.segs.some(function (s) { return s !== seg && (s.a === vi || s.b === vi); });
     });
-    if (!shared.length) return null;                 // already on its own
+  }
+
+  function detachSegment(m, seg, run) {
+    if (detachSnag(m, seg, run)) return null;
+    var shared = sharedEnds(seg, run);
     var sides = facesAlong(m, seg.a, seg.b);
-    if (sides.length !== 2) return null;
 
     var out = { a: seg.a, b: seg.b, touched: [] };
     shared.forEach(function (vi) {
       var copy = m.verts.length;
       m.verts.push([m.verts[vi][0], m.verts[vi][1]]);
+      // The two panels this piece divides take the copy and give up the
+      // original outright. The panels on the far side of the crossing border
+      // still hold the original, which is what keeps that border where it is -
+      // and leaving the original in these two as well would drag a spike of the
+      // old corner along, overlapping the neighbour it used to meet.
       sides.forEach(function (f) {
         f.vs = f.vs.map(function (k) { return k === vi ? copy : k; });
       });
       if (out.a === vi) out.a = copy;
       if (out.b === vi) out.b = copy;
       out.touched.push(copy, vi);
-      // the copy lands exactly on the original, so every face that carried the
-      // original on its boundary has to carry the copy too
       insertOnEdges(m, copy);
       insertOnEdges(m, vi);
     });
@@ -1457,15 +1539,50 @@
   var canvas = document.getElementById('preview');
   var ctx = canvas.getContext('2d');
   var meta = document.getElementById('meta');
-  var status = document.getElementById('status');
+  var tip = document.getElementById('tip');
+  var tipWrap = document.querySelector('.canvas-wrap');
   var undoBtn = document.getElementById('undo');
 
-  var view = { panels: [], cuts: [], broken: 0 };
+  var view = { panels: [], cuts: [], broken: 0, snap: null };
   var hover = { panel: null, cut: null, vertex: null, badge: null, x: 0, y: 0 };
   var drag = null;
   var swallowClick = false;
 
-  function say(msg) { status.textContent = msg; }
+  // Where the pointer was last seen inside the canvas, in the wrapper's own
+  // coordinates. Null until the pointer has been there at all, and again once
+  // it leaves - a message raised from a button should not chase a stale point.
+  var tipAt = null;
+
+  function say(msg) {
+    tip.textContent = msg || '';
+    if (msg) placeTip();
+  }
+
+  function placeTip() {
+    // The wrapper scrolls, and an absolutely positioned child scrolls with it,
+    // so the visible area starts at the scroll offset rather than at zero.
+    var vx = tipWrap.scrollLeft, vy = tipWrap.scrollTop;
+    var vw = tipWrap.clientWidth, vh = tipWrap.clientHeight;
+    var w = tip.offsetWidth, h = tip.offsetHeight;
+    var x, y;
+    if (tipAt) {
+      x = tipAt[0] + 16;
+      y = tipAt[1] + 20;
+      // near the bottom it would sit under the hand, so hop above the cursor
+      if (y + h > vy + vh - 6) y = tipAt[1] - h - 12;
+    } else {
+      x = vx + (vw - w) / 2;
+      y = vy + 10;
+    }
+    tip.style.left = Math.round(clamp(x, vx + 6, vx + vw - w - 6)) + 'px';
+    tip.style.top = Math.round(clamp(y, vy + 6, vy + vh - h - 6)) + 'px';
+  }
+
+  function trackTip(e) {
+    var box = tipWrap.getBoundingClientRect();
+    tipAt = [e.clientX - box.left + tipWrap.scrollLeft, e.clientY - box.top + tipWrap.scrollTop];
+    if (tip.textContent) placeTip();
+  }
 
   function mmToPx(mm) { return Math.round(mm / MM_PER_INCH * state.dpi); }
   function pxToMm(px) { return Math.round(px / state.dpi * MM_PER_INCH); }
@@ -1773,6 +1890,31 @@
       c.restore();
     }
 
+    // Why the drag stopped where it did. Without this a snap reads as the mouse
+    // sticking for no reason.
+    if (drag && view.snap) {
+      var r = pageRect();
+      c.save();
+      c.strokeStyle = '#7eb8b0';
+      c.lineWidth = 2 * s;
+      c.setLineDash([14 * s, 9 * s]);
+      c.beginPath();
+      if (view.snap.point) {
+        c.moveTo(r.x, view.snap.point[1]);
+        c.lineTo(r.x + r.w, view.snap.point[1]);
+        c.moveTo(view.snap.point[0], r.y);
+        c.lineTo(view.snap.point[0], r.y + r.h);
+      } else if (view.snap.axis) {
+        c.moveTo(r.x, view.snap.at);
+        c.lineTo(r.x + r.w, view.snap.at);
+      } else {
+        c.moveTo(view.snap.at, r.y);
+        c.lineTo(view.snap.at, r.y + r.h);
+      }
+      c.stroke();
+      c.restore();
+    }
+
     // the corner under the hand, which is what tilts a border
     var handle = drag && drag.vertex !== undefined ? drag.vertex : hover.vertex;
     if (handle !== null && handle !== undefined && mesh.verts[handle]) {
@@ -1871,6 +2013,16 @@
       (e.clientX - rect.left) * (canvas.width / rect.width),
       (e.clientY - rect.top) * (canvas.height / rect.height)
     ];
+  }
+
+  // Take the piece of border under the hand out of its line. A border that runs
+  // in one piece has nothing to take out of it - a line only comes in pieces
+  // where other borders cross it - and it is left alone rather than cut open
+  // somewhere no panel corner sits.
+  function stepOut(p) {
+    var hit = segAt(p[0], p[1]);
+    if (!hit) return null;
+    return detachSegment(mesh, hit.seg, hit.run);
   }
 
   // the one piece of border under the hand, for taking it out of its line
@@ -1972,6 +2124,35 @@
     return best;
   }
 
+  // ── lining things up ────────────────────────────────────
+  // A page is easy to knock out of true now that one tier can be stepped out of
+  // line on purpose, so a drag looks for the places worth landing on: where the
+  // other borders running the same way sit, and the middle of the page. Shift
+  // turns it off, because being out of true is also something worth asking for.
+
+  var SNAP_REACH = 8;          // screen pixels, so it feels the same at any zoom
+
+  function snapTargets(axis, exclude) {
+    var r = pageRect();
+    var out = [axis ? r.y + r.h / 2 : r.x + r.w / 2];
+    view.cuts.forEach(function (run) {
+      if (run === exclude) return;
+      // running the same way as the one being moved, so worth lining up with
+      if ((axis ? Math.abs(run.dir[0]) : Math.abs(run.dir[1])) < 0.9) return;
+      run.list.forEach(function (vi) { out.push(mesh.verts[vi][axis]); });
+    });
+    return out;
+  }
+
+  function snapValue(v, targets, reach) {
+    var best = v, bestD = reach;
+    targets.forEach(function (t) {
+      var d = Math.abs(t - v);
+      if (d < bestD) { bestD = d; best = t; }
+    });
+    return best;
+  }
+
   // A border divides the page along one axis and keeps doing so however far it
   // gets tilted, so the axis is fixed when the drag starts.
   function runAxis(run) { return Math.abs(run.dir[0]) >= Math.abs(run.dir[1]) ? 1 : 0; }
@@ -2017,8 +2198,20 @@
   // line meets it, so the border stays straight and nothing it crosses bends.
   // Dragging a corner in the middle of a border is the other gesture, and does
   // bend it - that is how a page comes to be staggered.
-  function pivotRun(drag, at) {
+  function pivotRun(drag, at, free) {
     var pv = drag.from[drag.pivot];
+    view.snap = null;
+    if (!free) {
+      // the pivot's own coordinate is in the list, so a border can be put back
+      // straight as easily as it was tilted
+      var targets = snapTargets(drag.axis, drag.run).concat([pv[drag.axis]]);
+      var want = at[drag.axis];
+      var got = snapValue(want, targets, SNAP_REACH * viewScale());
+      if (got !== want) {
+        view.snap = { axis: drag.axis, at: got };
+        at = drag.axis ? [at[0], got] : [got, at[1]];
+      }
+    }
     moveVert(mesh, drag.vertex, at);
     var end = mesh.verts[drag.vertex];
     var dx = end[0] - pv[0], dy = end[1] - pv[1], L = Math.hypot(dx, dy);
@@ -2035,8 +2228,17 @@
   // Slide the whole border along its axis. Each of its vertices lands where the
   // moved line meets whatever else runs through that vertex, so nothing that
   // crosses it is bent out of line.
-  function slideRun(drag, dx, dy) {
+  function slideRun(drag, dx, dy, free) {
     var k = drag.axis ? dy : dx;
+    view.snap = null;
+    if (!free) {
+      var want = drag.anchor[drag.axis] + k;
+      var got = snapValue(want, snapTargets(drag.axis, drag.run), SNAP_REACH * viewScale());
+      if (got !== want) {
+        view.snap = { axis: drag.axis, at: got };
+        k += got - want;
+      }
+    }
     var off = drag.axis ? [0, k] : [k, 0];
     var anchor = [drag.anchor[0] + off[0], drag.anchor[1] + off[1]];
     drag.run.list.forEach(function (vi) {
@@ -2044,6 +2246,22 @@
       var to = cross ? lineCross(anchor, drag.run.dir, o, cross) : null;
       moveVert(mesh, vi, to || [o[0] + off[0], o[1] + off[1]]);
     });
+  }
+
+  // A corner in the middle of a border is dragged freely, so it lines up with
+  // any other corner rather than with a whole line.
+  function snapLoose(vi, p, free) {
+    view.snap = null;
+    if (free) return p;
+    var reach = SNAP_REACH * viewScale(), xs = [], ys = [];
+    mesh.verts.forEach(function (v, i) {
+      if (i === vi) return;
+      xs.push(v[0]);
+      ys.push(v[1]);
+    });
+    var x = snapValue(p[0], xs, reach), y = snapValue(p[1], ys, reach);
+    if (x !== p[0] || y !== p[1]) view.snap = { point: [x, y] };
+    return [x, y];
   }
 
   function vertsSnapshot() {
@@ -2071,6 +2289,7 @@
   canvas.addEventListener('mousemove', function (e) {
     var p = toPage(e);
     hover.x = p[0]; hover.y = p[1]; hover.alt = e.altKey;
+    trackTip(e);
 
     if (drag && drag.badge !== undefined) {
       hover.panel = panelAt(p[0], p[1]);
@@ -2080,9 +2299,9 @@
 
     if (drag) {
       var undoVerts = vertsSnapshot();
-      if (drag.pivot !== undefined) pivotRun(drag, p);
-      else if (drag.vertex !== undefined) moveVert(mesh, drag.vertex, p);
-      else slideRun(drag, p[0] - drag.start[0], p[1] - drag.start[1]);
+      if (drag.pivot !== undefined) pivotRun(drag, p, e.shiftKey);
+      else if (drag.vertex !== undefined) moveVert(mesh, drag.vertex, snapLoose(drag.vertex, p, e.shiftKey));
+      else slideRun(drag, p[0] - drag.start[0], p[1] - drag.start[1], e.shiftKey);
       // a vertex may have come to rest on a face it was not part of
       repairMesh(mesh);
 
@@ -2120,12 +2339,14 @@
 
   canvas.addEventListener('mouseleave', function () {
     if (drag) return;
+    tipAt = null;
     hover.cut = null; hover.panel = null; hover.vertex = null; hover.badge = null;
     render();
   });
 
   canvas.addEventListener('mousedown', function (e) {
     if (e.button !== 0 || selected !== null) return;
+    trackTip(e);
     var p = toPage(e);
     // a number badge sits inside a panel, where a click would otherwise cut it
     var bi = badgeAt(p[0], p[1]);
@@ -2141,6 +2362,19 @@
     var cu = vi === null ? cutAt(p[0], p[1]) : null;
     if (vi === null && !cu) return;
     e.preventDefault();
+
+    // Where the borders crossing it on either side are stepped apart, this
+    // piece is one panel's whole edge and only part of the other's, so taking
+    // it out would notch a panel nobody asked to reshape - and either reading
+    // of the drag is as good as the other. Refuse it rather than guess.
+    if (vi === null && e.altKey) {
+      var over = segAt(p[0], p[1]);
+      if (over && detachSnag(mesh, over.seg, over.run) === 'staggered') {
+        swallowClick = true;
+        say('경계선이 어긋나 있어 이 조각만 떼어낼 수 없습니다.');
+        return;
+      }
+    }
     push();
     if (vi !== null) {
       // an end of exactly one border turns that whole border; anything else is
@@ -2155,7 +2389,7 @@
         run.list.forEach(function (k) { cross[k] = crossingDir(k, run.dir); });
         drag = {
           vertex: vi, run: run, pivot: ends.i === vi ? ends.j : ends.i,
-          from: vertsSnapshot(), cross: cross
+          from: vertsSnapshot(), cross: cross, axis: runAxis(run)
         };
         say('경계선을 기울이는 중 — 반대쪽 끝을 축으로 돕니다.');
       } else {
@@ -2169,8 +2403,7 @@
     // the piece is simply its own border now.
     var stepping = false;
     if (e.altKey) {
-      var hit = segAt(p[0], p[1]);
-      var made = hit && detachSegment(mesh, hit.seg, hit.run);
+      var made = stepOut(p);
       if (made) {
         repairMesh(mesh);
         render();
@@ -2189,6 +2422,7 @@
       anchor: mesh.verts[cu.list[0]].slice(), cross: cross, stepping: stepping
     };
     say(stepping ? '이 조각만 떼어 옮기는 중 — 나머지 줄은 제자리에 남습니다.'
+      : e.altKey ? '이 경계선은 한 조각이라 뗄 곳이 없습니다 — 통째로 옮깁니다.'
                  : '경계선을 옮기는 중 — 기울이려면 꼭짓점을 끄세요.');
   });
 
@@ -2209,6 +2443,7 @@
       return;
     }
     drag = null;
+    view.snap = null;
     // pieces that ended up exactly back in line become one border again
     if (weldMesh(mesh)) repairMesh(mesh);
     // A click follows every release, and after a tilt the pointer has been
@@ -2241,7 +2476,7 @@
       say('합친 칸은 쪼갤 수 없습니다. 오른쪽 클릭으로 먼저 푸세요.');
       return;
     }
-    splitPanel(pn, p[0], p[1], e.altKey ? (state.dir === 'h' ? 'v' : 'h') : state.dir);
+    splitPanel(pn, p[0], p[1], e.altKey ? (state.dir === 'h' ? 'v' : 'h') : state.dir, e.shiftKey);
   });
 
   // The whole merge happens on this button: one right-click selects a panel,
@@ -2302,10 +2537,16 @@
     say('합친 칸을 풀었습니다.');
   }
 
-  function splitPanel(entry, x, y, dir) {
+  function splitPanel(entry, x, y, dir, free) {
     if (!entry.face) return;
     var bb = polyBBox(entry.poly);
-    var at = clamp(dir === 'v' ? (x - bb.x) / bb.w : (y - bb.y) / bb.h, 0.08, 0.92);
+    // A new cut lands where the click did, but a click cannot be trusted to
+    // land on the column line one tier up - which is where pages quietly go
+    // crooked. So it looks for one first.
+    var axis = dir === 'v' ? 0 : 1;
+    var want = axis ? y : x;
+    var got = free ? want : snapValue(want, snapTargets(axis, null), SNAP_REACH * viewScale());
+    var at = clamp(dir === 'v' ? (got - bb.x) / bb.w : (got - bb.y) / bb.h, 0.08, 0.92);
 
     // Cut a copy first: if what comes out is too tight to work in, the real page
     // never sees it.
