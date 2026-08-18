@@ -1046,6 +1046,35 @@
     });
   }
 
+  // The other half of that. A corner a loop was right to pick up can stop
+  // belonging to it once things move again - a piece stepped out of a line and
+  // then brought back past where it started leaves the loop standing on its own
+  // neighbour, an edge of no length with no direction to cut a gutter against,
+  // and carried further leaves it reaching back along the line it just came
+  // down, a spike of no width. Both are read off the two edges meeting there: no
+  // length on one side, or both sides leaving the same way. A corner the line
+  // merely passes through has its two sides leaving opposite ways, and stays.
+  function pruneLoops(m) {
+    m.faces.forEach(function (f) {
+      for (var guard = f.vs.length; guard > 0 && f.vs.length > 3; guard--) {
+        var n = f.vs.length, cut = -1;
+        for (var i = 0; i < n && cut < 0; i++) {
+          var v = m.verts[f.vs[i]];
+          var a = m.verts[f.vs[(i - 1 + n) % n]], b = m.verts[f.vs[(i + 1) % n]];
+          var ax = a[0] - v[0], ay = a[1] - v[1], bx = b[0] - v[0], by = b[1] - v[1];
+          var la = Math.hypot(ax, ay), lb = Math.hypot(bx, by);
+          if (lb < 1e-6) { cut = i; break; }
+          if (la < 1e-6) continue;                       // its neighbour goes instead
+          var turn = (ax * by - ay * bx) / (la * lb);
+          var same = (ax * bx + ay * by) / (la * lb);
+          if (Math.abs(turn) < 1e-6 && same > 0) cut = i;
+        }
+        if (cut < 0) break;
+        f.vs.splice(cut, 1);
+      }
+    });
+  }
+
   // `at` runs across the face's bounding box and `tilt` swings the line about
   // that point, so the presets read the same as they always did.
   function splitFace(m, f, dir, at, tilt) {
@@ -1302,7 +1331,9 @@
   // part of. Taking them all up again is cheap at this size and saves having to
   // work out which ones could have changed.
   function repairMesh(m) {
+    pruneLoops(m);
     for (var i = 0; i < m.verts.length; i++) insertOnEdges(m, i);
+    pruneLoops(m);
   }
 
   // Two vertices left sitting on top of each other keep their borders apart even
@@ -2310,6 +2341,21 @@
     });
   }
 
+  // Repairing a mesh only ever adds a vertex to a loop; nothing takes one back
+  // out. Over a drag that piles up: a corner picked up on the way out is still
+  // in the loop on the way home, and the moment the piece passes back through
+  // where it began there are two corners on the same spot, an edge of no length
+  // between them, and the panel is lost. So a drag puts the loops back to how it
+  // found them before every move, and lets the repair say afresh what the shape
+  // it has now needs.
+  function loopsSnapshot() {
+    return mesh.faces.map(function (f) { return f.vs.slice(); });
+  }
+
+  function restoreLoops(from) {
+    mesh.faces.forEach(function (f, i) { if (from[i]) f.vs = from[i].slice(); });
+  }
+
   // Would these two make one straight-sided panel? Asked of the regions as they
   // are now, so it stays true after cuts have been dragged around.
   function canMerge(id, target) {
@@ -2331,7 +2377,10 @@
     }
 
     if (drag) {
-      var undoVerts = vertsSnapshot();
+      var undoVerts = vertsSnapshot(), undoLoops = loopsSnapshot();
+      // Every frame is worked out afresh from where the drag began - the
+      // positions already were, and the loops have to be as well.
+      if (drag.loops) restoreLoops(drag.loops);
       if (drag.pivot !== undefined) pivotRun(drag, p, e.shiftKey);
       else if (drag.vertex !== undefined) moveVert(mesh, drag.vertex, snapLoose(drag.vertex, p, e.shiftKey));
       else slideRun(drag, p[0] - drag.start[0], p[1] - drag.start[1], e.shiftKey);
@@ -2341,7 +2390,7 @@
       // Refuse a move that tears the page or presses a panel flat. Trying it and
       // putting it back is simpler than working out in advance which moves are
       // allowed, and it is the same answer.
-      if (!meshValid(mesh, state.gutter + 20)) restoreVerts(undoVerts);
+      if (!meshValid(mesh, state.gutter + 20)) { restoreVerts(undoVerts); restoreLoops(undoLoops); }
       render();
       return;
     }
@@ -2422,11 +2471,11 @@
         run.list.forEach(function (k) { cross[k] = crossingDir(k, run.dir); });
         drag = {
           vertex: vi, run: run, pivot: ends.i === vi ? ends.j : ends.i,
-          from: vertsSnapshot(), cross: cross, axis: runAxis(run)
+          from: vertsSnapshot(), loops: loopsSnapshot(), cross: cross, axis: runAxis(run)
         };
         say('경계선을 기울이는 중 — 반대쪽 끝을 축으로 돕니다.');
       } else {
-        drag = { vertex: vi, from: vertsSnapshot() };
+        drag = { vertex: vi, from: vertsSnapshot(), loops: loopsSnapshot() };
         say('꼭짓점을 옮기는 중 — 여기 모인 선들이 따라 꺾입니다.');
       }
       return;
@@ -2451,7 +2500,7 @@
     var cross = {};
     cu.list.forEach(function (k) { cross[k] = crossingDir(k, cu.dir); });
     drag = {
-      run: cu, start: p, from: vertsSnapshot(), axis: runAxis(cu),
+      run: cu, start: p, from: vertsSnapshot(), loops: loopsSnapshot(), axis: runAxis(cu),
       anchor: mesh.verts[cu.list[0]].slice(), cross: cross, stepping: stepping
     };
     say(stepping ? '이 조각만 떼어 옮기는 중 — 나머지 줄은 제자리에 남습니다.'
