@@ -569,48 +569,12 @@
   var KAPPA = 0.5522847498307936;
 
   function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
-  function rot(x, y, a) { var c = Math.cos(a), s = Math.sin(a); return [x * c - y * s, x * s + y * c]; }
 
   function rectPoly(x, y, w, h) {
     return {
       pts: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]],
       inner: [false, false, false, false]
     };
-  }
-
-  // Sutherland-Hodgman against the half plane dot(p - c, n) <= 0, carrying the
-  // per-edge flags through: a clipped-off stretch leaves a new edge lying on the
-  // clip line, and that edge is by definition a cut.
-  function clipPoly(poly, cx, cy, nx, ny) {
-    var pts = poly.pts, inner = poly.inner, n = pts.length;
-    var out = [], flags = [];
-    for (var i = 0; i < n; i++) {
-      var a = pts[i], b = pts[(i + 1) % n], f = inner[i];
-      var da = (a[0] - cx) * nx + (a[1] - cy) * ny;
-      var db = (b[0] - cx) * nx + (b[1] - cy) * ny;
-      var ain = da <= 0, bin = db <= 0;
-      if (ain) { out.push(a); flags.push(f); }
-      if (ain !== bin) {
-        var t = da / (da - db);
-        out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
-        // leaving the half plane: the next edge runs along the clip line
-        flags.push(ain ? true : f);
-      }
-    }
-    return dedupe({ pts: out, inner: flags });
-  }
-
-  // A vertex sitting exactly on the clip line gets emitted twice. Drop the
-  // earlier copy - the flag that matters is the one on the edge leaving it.
-  function dedupe(poly) {
-    var pts = [], inner = [], n = poly.pts.length;
-    for (var i = 0; i < n; i++) {
-      var a = poly.pts[i], b = poly.pts[(i + 1) % n];
-      if (Math.abs(a[0] - b[0]) < 1e-7 && Math.abs(a[1] - b[1]) < 1e-7) continue;
-      pts.push(a);
-      inner.push(poly.inner[i]);
-    }
-    return { pts: pts, inner: inner };
   }
 
   function polyBBox(poly) {
@@ -702,136 +666,6 @@
       }
     }
     return best;
-  }
-
-  // ══ Union ═════════════════════════════════════════════
-  // Merging panels cancels shared edges rather than running any general boolean
-  // geometry: two regions that meet along a border each contribute that border
-  // once, in opposite directions, so dropping every such pair leaves exactly the
-  // outline of the whole. It is exact, it carries the page-edge/cut flags
-  // through untouched, and it does not care whether the result is convex -
-  // which is the entire point of doing it this way.
-
-  var SNAP = 1e-3;
-
-  function keyOf(p) { return Math.round(p[0] / SNAP) + ',' + Math.round(p[1] / SNAP); }
-
-  // A corner of one panel can land partway along another panel's edge - a T
-  // junction. Left alone, the long edge and the two short ones never pair off
-  // and the cancellation leaves a tangle, so split the long one first.
-  function splitAtJunctions(polys) {
-    var corners = [];
-    polys.forEach(function (poly) {
-      poly.pts.forEach(function (p) { corners.push(p); });
-    });
-    return polys.map(function (poly) {
-      var pts = [], inner = [], n = poly.pts.length;
-      for (var i = 0; i < n; i++) {
-        var a = poly.pts[i], b = poly.pts[(i + 1) % n];
-        pts.push(a);
-        inner.push(poly.inner[i]);
-        var ex = b[0] - a[0], ey = b[1] - a[1], L2 = ex * ex + ey * ey;
-        if (L2 < 1e-12) continue;
-        var hits = [], seen = {};
-        corners.forEach(function (c) {
-          var t = ((c[0] - a[0]) * ex + (c[1] - a[1]) * ey) / L2;
-          if (t <= 1e-9 || t >= 1 - 1e-9) return;
-          var dx = a[0] + ex * t - c[0], dy = a[1] + ey * t - c[1];
-          if (dx * dx + dy * dy > SNAP * SNAP) return;
-          var k = keyOf(c);
-          if (seen[k]) return;
-          seen[k] = true;
-          hits.push([t, c]);
-        });
-        hits.sort(function (u, v) { return u[0] - v[0]; });
-        hits.forEach(function (h) {
-          pts.push(h[1]);
-          inner.push(poly.inner[i]);
-        });
-      }
-      return { pts: pts, inner: inner };
-    });
-  }
-
-  function unionPolys(polys) {
-    var parts = splitAtJunctions(polys);
-    var pool = {}, live = 0;
-    for (var pi = 0; pi < parts.length; pi++) {
-      var poly = parts[pi], n = poly.pts.length;
-      for (var i = 0; i < n; i++) {
-        var a = poly.pts[i], b = poly.pts[(i + 1) % n];
-        var ka = keyOf(a), kb = keyOf(b);
-        if (ka === kb) continue;
-        var back = kb + '>' + ka;
-        if (pool[back]) { delete pool[back]; live--; continue; }
-        var fwd = ka + '>' + kb;
-        if (pool[fwd]) return null;              // same border twice the same way
-        pool[fwd] = { a: a, b: b, inner: poly.inner[i], ka: ka, kb: kb };
-        live++;
-      }
-    }
-    if (live < 3) return null;
-
-    var from = {}, keys = Object.keys(pool);
-    for (i = 0; i < keys.length; i++) {
-      var e = pool[keys[i]];
-      if (from[e.ka]) return null;               // the outline forks at a corner
-      from[e.ka] = e;
-    }
-
-    var cur = pool[keys[0]], loop = [], flags = [], walked = {};
-    while (cur && !walked[cur.ka]) {
-      walked[cur.ka] = true;
-      loop.push(cur.a);
-      flags.push(cur.inner);
-      cur = from[cur.kb];
-    }
-    if (loop.length !== keys.length) return null;   // more than one loop, or a gap
-    return dropCollinear({ pts: loop, inner: flags });
-  }
-
-  // Splitting at junctions leaves straight-through vertices behind. They would
-  // survive into the anchor count and into corner rounding as zero-degree
-  // corners, so fold them back out - but only where the flag does not change.
-  function dropCollinear(poly) {
-    var pts = [], inner = [], n = poly.pts.length;
-    for (var i = 0; i < n; i++) {
-      var prev = poly.pts[(i - 1 + n) % n], cur = poly.pts[i], next = poly.pts[(i + 1) % n];
-      var ax = cur[0] - prev[0], ay = cur[1] - prev[1];
-      var bx = next[0] - cur[0], by = next[1] - cur[1];
-      var L = Math.hypot(ax, ay) * Math.hypot(bx, by);
-      var straight = L > 0 && Math.abs(ax * by - ay * bx) / L < 1e-9;
-      if (straight && poly.inner[(i - 1 + n) % n] === poly.inner[i]) continue;
-      pts.push(cur);
-      inner.push(poly.inner[i]);
-    }
-    return { pts: pts, inner: inner };
-  }
-
-  // `at` runs across the region's bounding box, and `tilt` swings the line about
-  // that point - so moving a cut and angling it stay independent of each other.
-  function cutRegion(poly, dir, at, tilt) {
-    var bb = polyBBox(poly);
-    if (bb.w < 1 || bb.h < 1) return null;
-    var a = (tilt || 0) * Math.PI / 180;
-    var cx, cy, nrm;
-    if (dir === 'v') {
-      cx = bb.x + at * bb.w; cy = bb.y + bb.h / 2;
-      nrm = rot(1, 0, a);
-    } else {
-      cx = bb.x + bb.w / 2; cy = bb.y + at * bb.h;
-      nrm = rot(0, 1, a);
-    }
-    var A = clipPoly(poly, cx, cy, nrm[0], nrm[1]);
-    var B = clipPoly(poly, cx, cy, -nrm[0], -nrm[1]);
-    if (A.pts.length < 3 || B.pts.length < 3) return null;
-
-    // the shared edge, for hit testing and for drawing the drag handle
-    var seg = null;
-    for (var i = 0; i < A.pts.length; i++) {
-      if (A.inner[i]) { seg = [A.pts[i], A.pts[(i + 1) % A.pts.length]]; break; }
-    }
-    return { A: A, B: B, seg: seg, at: at };
   }
 
   // Pull every cut edge in by d, leave page edges where they are, and rebuild
@@ -995,7 +829,7 @@
   function cloneMesh(m) {
     return {
       verts: m.verts.map(function (p) { return [p[0], p[1]]; }),
-      faces: m.faces.map(function (f) { return { id: f.id, vs: f.vs.slice() }; }),
+      faces: m.faces.map(function (f) { return { id: f.id, vs: f.vs.slice(), joined: f.joined }; }),
       page: { x: m.page.x, y: m.page.y, w: m.page.w, h: m.page.h }
     };
   }
@@ -1075,21 +909,16 @@
     });
   }
 
-  // `at` runs across the face's bounding box and `tilt` swings the line about
-  // that point, so the presets read the same as they always did.
-  function splitFace(m, f, dir, at, tilt) {
-    var pts = facePts(m, f), bb = polyBBox({ pts: pts });
-    if (bb.w < 1e-6 || bb.h < 1e-6) return null;
-    var a = (tilt || 0) * Math.PI / 180;
-    var cx, cy, dx, dy;
-    if (dir === 'v') {
-      cx = bb.x + at * bb.w; cy = bb.y + bb.h / 2;
-      dx = -Math.sin(a); dy = Math.cos(a);
-    } else {
-      cx = bb.x + bb.w / 2; cy = bb.y + at * bb.h;
-      dx = Math.cos(a); dy = Math.sin(a);
-    }
-
+  // The geometry of one straight cut: split face `f` along the line through
+  // (cx,cy) in direction (dx,dy). Returns the two faces in whatever order the
+  // loop produced them, plus the two vertices the new edge runs between, or
+  // null if the line has no panel to cross.
+  //
+  // A concave panel can send the line out and back in again, so the crossings
+  // come in more than one pair and only some of them have panel between them.
+  // The interior ones are the chords; this takes the first and leaves the rest
+  // to `cutFaceAcross`, which comes back for them.
+  function cutFaceWithLine(m, f, cx, cy, dx, dy) {
     var hits = [], seen = {};
     for (var i = 0; i < f.vs.length; i++) {
       var p = m.verts[f.vs[i]], q = m.verts[f.vs[(i + 1) % f.vs.length]];
@@ -1104,11 +933,22 @@
       var k = Math.round(pt[0] / 1e-4) + ',' + Math.round(pt[1] / 1e-4);
       if (seen[k]) continue;          // a line through a corner reports both edges
       seen[k] = true;
-      hits.push(pt);
+      hits.push({ pt: pt, at: (pt[0] - cx) * dx + (pt[1] - cy) * dy });
     }
-    if (hits.length !== 2) return null;
+    if (hits.length < 2) return null;
+    hits.sort(function (a, b) { return a.at - b.at; });
 
-    var ai = vertexAt(m, hits[0]), bi = vertexAt(m, hits[1]);
+    var pts = facePts(m, f), pair = null;
+    for (var h = 0; h + 1 < hits.length && !pair; h++) {
+      var s = hits[h].pt, e = hits[h + 1].pt;
+      if (Math.hypot(e[0] - s[0], e[1] - s[1]) < 1e-9) continue;
+      // Strictly inside, not merely inside: the two ends of a cut already made
+      // are crossings too, and the edge between them lies along the boundary.
+      if (deepInside({ pts: pts }, (s[0] + e[0]) / 2, (s[1] + e[1]) / 2, 1e-6)) pair = [s, e];
+    }
+    if (!pair) return null;
+
+    var ai = vertexAt(m, pair[0]), bi = vertexAt(m, pair[1]);
     insertOnEdges(m, ai);
     insertOnEdges(m, bi);
 
@@ -1123,6 +963,51 @@
     f.vs = one;
     var made = { id: nextFaceId++, vs: two };
     m.faces.push(made);
+    return { a: f, b: made, ai: ai, bi: bi };
+  }
+
+  // Where a cut goes: `at` runs across the face's bounding box and `tilt`
+  // swings the line about that point, so the presets read the same as they
+  // always did.
+  function cutLineFor(m, f, dir, at, tilt) {
+    var bb = polyBBox({ pts: facePts(m, f) });
+    if (bb.w < 1e-6 || bb.h < 1e-6) return null;
+    var a = (tilt || 0) * Math.PI / 180;
+    if (dir === 'v') {
+      return { cx: bb.x + at * bb.w, cy: bb.y + bb.h / 2, dx: -Math.sin(a), dy: Math.cos(a) };
+    }
+    return { cx: bb.x + bb.w / 2, cy: bb.y + at * bb.h, dx: Math.cos(a), dy: Math.sin(a) };
+  }
+
+  // One line taken all the way across a panel. A straight cut leaves two
+  // pieces, but a line laid across both arms of a ㄷ-shaped panel leaves three
+  // - the two arm ends and the base between them - and only going round again
+  // finds them all.
+  function cutFaceAcross(m, f, cx, cy, dx, dy) {
+    var open = [f], done = [], guard = 64;
+    while (open.length && guard-- > 0) {
+      var face = open.pop();
+      var cut = cutFaceWithLine(m, face, cx, cy, dx, dy);
+      if (cut) open.push(cut.a, cut.b);
+      else done.push(face);
+    }
+    return done;
+  }
+
+  // The interactive cut. Unlike splitFace it does not care how many pieces
+  // fall out, so a merged panel with a bend in it can be cut like any other.
+  function splitAcross(m, f, dir, at, tilt) {
+    var line = cutLineFor(m, f, dir, at, tilt);
+    if (!line) return null;
+    var pieces = cutFaceAcross(m, f, line.cx, line.cy, line.dx, line.dy);
+    return pieces.length > 1 ? pieces : null;
+  }
+
+  function splitFace(m, f, dir, at, tilt) {
+    var line = cutLineFor(m, f, dir, at, tilt);
+    if (!line) return null;
+    var cut = cutFaceWithLine(m, f, line.cx, line.cy, line.dx, line.dy);
+    if (!cut) return null;
 
     // Which half came out of `one` depends on where the cut happened to meet the
     // loop, so name them by where they ended up instead: `a` is the near side -
@@ -1133,8 +1018,78 @@
       pts.forEach(function (p) { sx += p[0]; sy += p[1]; });
       return dir === 'v' ? sx / pts.length : sy / pts.length;
     }
-    var near = mid(f) <= mid(made) ? f : made;
-    return { a: near, b: near === f ? made : f };
+    var near = mid(cut.a) <= mid(cut.b) ? cut.a : cut.b;
+    return { a: near, b: near === cut.a ? cut.b : cut.a };
+  }
+
+  // ── Merging ──────────────────────────────────────────────
+  // A merge takes the border between two panels out of the mesh rather than
+  // drawing over it. Hiding it was never enough: a hidden border is still a
+  // border, so its corners could be grabbed through the panel that swallowed
+  // it, and dragging the visible end of the line it belonged to dragged the
+  // buried part too - squeezing panels nobody can see against the gutter check
+  // and stopping the visible border dead.
+
+  // Stitch B into A along an edge they share, and drop B. The two loops run
+  // opposite ways along that edge, so walking A from the far end of it round
+  // to the near end, then B the same way, closes the two into one.
+  function fuseTwo(m, A, B) {
+    var na = A.vs.length, nb = B.vs.length;
+    for (var i = 0; i < na; i++) {
+      var u = atKey(m.verts[A.vs[i]]), v = atKey(m.verts[A.vs[(i + 1) % na]]);
+      for (var j = 0; j < nb; j++) {
+        if (atKey(m.verts[B.vs[j]]) !== v) continue;
+        if (atKey(m.verts[B.vs[(j + 1) % nb]]) !== u) continue;
+        var loop = [], k;
+        for (k = 1; k <= na; k++) loop.push(A.vs[(i + k) % na]);
+        for (k = 2; k <= nb - 1; k++) loop.push(B.vs[(j + k) % nb]);
+        A.vs = loop;
+        m.faces.splice(m.faces.indexOf(B), 1);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Fuse a whole set into the first of them. Faces that share more than one
+  // edge leave the extra ones behind as a spike of no width, which pruneLoops
+  // takes out; taking them one at a time and pruning after is easier to be
+  // sure of than matching a whole run of shared edges at once.
+  function fuseFaces(m, ids) {
+    var into = faceById(m, ids[0]);
+    if (!into) return null;
+    var rest = ids.slice(1).map(function (id) { return faceById(m, id); }).filter(Boolean);
+    var guard = rest.length + 1;
+    while (rest.length && guard-- > 0) {
+      var moved = false;
+      for (var i = 0; i < rest.length && !moved; i++) {
+        if (!fuseTwo(m, into, rest[i])) continue;
+        rest.splice(i, 1);
+        pruneLoops(m);
+        moved = true;
+      }
+      if (!moved) return null;              // what is left does not touch it
+    }
+
+    // A ring closed around a hole is not one loop, and a panel is. Stitched
+    // anyway it comes back as a keyhole - the outline running up to the hole
+    // and straight back down the same line - and two corners standing on one
+    // spot is that seam. Refuse it rather than hand back a panel that cannot
+    // be drawn, masked or stroked.
+    var seen = {};
+    for (var v = 0; v < into.vs.length; v++) {
+      var k = atKey(m.verts[into.vs[v]]);
+      if (seen[k]) return null;
+      seen[k] = true;
+    }
+
+    into.joined = true;
+    return into;
+  }
+
+  function faceById(m, id) {
+    for (var i = 0; i < m.faces.length; i++) if (m.faces[i].id === id) return m.faces[i];
+    return null;
   }
 
   function atKey(p) { return Math.round(p[0] / 1e-3) + ',' + Math.round(p[1] / 1e-3); }
@@ -1562,7 +1517,6 @@
   var ref = { img: null, url: null, hidden: false };
 
   var mesh = null;          // built once the page rectangle is known
-  var groups = [];          // each entry: face ids that are drawn as one panel
   var selected = null;      // face id waiting for a partner to merge with
   // Face ids in reading order, once someone has said otherwise. Null means work
   // it out from where the panels are, which is right until it is not - a
@@ -1577,7 +1531,7 @@
   var tipWrap = document.querySelector('.canvas-wrap');
   var undoBtn = document.getElementById('undo');
 
-  var view = { panels: [], cuts: [], broken: 0, snap: null };
+  var view = { panels: [], cuts: [], snap: null };
   var hover = { panel: null, cut: null, vertex: null, badge: null, x: 0, y: 0 };
   var drag = null;
   var swallowClick = false;
@@ -1661,35 +1615,39 @@
   }
 
   function push() {
-    history.push({
-      mesh: cloneMesh(mesh),
-      groups: groups.map(function (g) { return g.slice(); }),
-      order: order && order.slice()
-    });
+    history.push({ mesh: cloneMesh(mesh), order: order && order.slice() });
     if (history.length > 60) history.shift();
     undoBtn.disabled = false;
   }
 
+  // Merges live in the mesh itself, so a snapshot of the mesh is the whole of
+  // the layout - undoing one is undoing the surgery that made it.
   function undo() {
     if (!history.length) return;
     var was = history.pop();
     mesh = was.mesh;
-    groups = was.groups;
     order = was.order;
     selected = null;
+    forgetHover();
     undoBtn.disabled = !history.length;
     render();
     say('되돌렸습니다.');
   }
 
-  // Anything that throws the layout away has to throw the merges away with it -
-  // they name faces that are about to stop existing.
   function replaceMesh(next) {
     push();
     mesh = next;
-    groups = [];
     order = null;                 // a new layout reads in its own order
     selected = null;
+    forgetHover();
+  }
+
+  // Hover and drag name borders and corners by their number in the mesh. Swap
+  // the mesh and those numbers mean something else in the one taking its place,
+  // or nothing at all - so whatever the hand was over has to be let go of.
+  function forgetHover() {
+    drag = null;
+    hover.cut = null; hover.panel = null; hover.vertex = null; hover.badge = null;
   }
 
   // The reading order as it stands: what was asked for, with anything that has
@@ -1716,13 +1674,6 @@
         Math.abs(mesh.page.w - r.w) > 1e-6 || Math.abs(mesh.page.h - r.h) > 1e-6) {
       rescaleMesh(mesh, r);
     }
-  }
-
-  function groupOf(id) {
-    for (var i = 0; i < groups.length; i++) {
-      if (groups[i].indexOf(id) >= 0) return groups[i];
-    }
-    return null;
   }
 
   // ══ Render ════════════════════════════════════════════
@@ -1779,68 +1730,13 @@
     });
   }
 
-  // One merged panel out of several regions. Returns null when they do not make
-  // a single panel between them - not touching, touching only at a corner, or
-  // closing a ring around a hole - and also when a later edit has pulled them
-  // apart, so a stale merge stops drawing over its neighbours.
-  function mergePolys(polys) {
-    if (polys.length === 1) return polys[0];
-    var u = unionPolys(polys);
-    if (!u || u.pts.length < 3) return null;
-    var want = polys.reduce(function (s, p) { return s + polyArea(p); }, 0);
-    if (Math.abs(polyArea(u) - want) > Math.max(1, want * 1e-4)) return null;
-    return u;
-  }
-
-  // What actually gets drawn: the mesh's faces in reading order, with each
-  // merged set collapsed into a single panel that takes the reading position of
-  // its first member.
+  // What actually gets drawn. A merged panel is a face like any other now - the
+  // merge fused it - so there is no set to collapse and no border to hide.
   function buildPanels() {
-    var reading = orderedFaces();
-    var byId = {};
-    reading.forEach(function (f) { byId[f.id] = f; });
-
-    var panels = [], done = {}, broken = 0;
-    reading.forEach(function (f) {
-      var g = groupOf(f.id);
-      if (!g) {
-        panels.push({ ids: [f.id], face: f, poly: facePoly(mesh, f), merged: false });
-        return;
-      }
-      var key = g.join(',');
-      if (done[key]) return;
-      done[key] = true;
-      var members = g.map(function (id) { return byId[id]; }).filter(Boolean);
-      if (!members.length) return;
-      var polys = members.map(function (mf) { return facePoly(mesh, mf); });
-      var poly = mergePolys(polys);
-      if (!poly) {
-        broken++;
-        members.forEach(function (mf, i) {
-          panels.push({ ids: [mf.id], face: mf, poly: polys[i], merged: false });
-        });
-        return;
-      }
-      panels.push({
-        ids: members.map(function (mf) { return mf.id; }),
-        face: members.length > 1 ? null : members[0],
-        poly: poly,
-        merged: members.length > 1
-      });
+    var panels = orderedFaces().map(function (f) {
+      return { ids: [f.id], face: f, poly: facePoly(mesh, f), merged: !!f.joined };
     });
-
-    // A border swallowed by a merge is no longer something anyone can see, so it
-    // stops being something the mouse can grab.
-    var merged = panels.filter(function (p) { return p.merged; });
-    var live = borderRuns(mesh).filter(function (run) {
-      return !run.segs.every(function (s) {
-        var a = mesh.verts[s.a], b = mesh.verts[s.b];
-        var mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
-        return merged.some(function (p) { return deepInside(p.poly, mx, my); });
-      });
-    });
-
-    return { panels: panels, cuts: live, broken: broken };
+    return { panels: panels, cuts: borderRuns(mesh) };
   }
 
   function render() {
@@ -1848,7 +1744,6 @@
     var built = buildPanels();
     view.panels = built.panels;
     view.cuts = built.cuts;
-    view.broken = built.broken;
     view.panels.forEach(function (p) { p.knots = panelKnots(p.poly); });
 
     if (canvas.width !== state.w || canvas.height !== state.h) {
@@ -1874,8 +1769,7 @@
     meta.textContent = size + ' · ' + zoom + '% · ' + view.panels.length + '칸 · ' +
                        anchors + ' anchor points' +
                        (joined ? ' · 합친 칸 ' + joined + '개' : '') +
-                       (lost ? ' · ' + lost + '칸은 간격에 눌려 사라졌습니다' : '') +
-                       (view.broken ? ' · 합쳤던 칸 ' + view.broken + '개가 어긋나 도로 풀렸습니다' : '');
+                       (lost ? ' · ' + lost + '칸은 간격에 눌려 사라졌습니다' : '');
     undoBtn.disabled = !history.length;
   }
 
@@ -1937,7 +1831,7 @@
       c.fillStyle = 'rgba(126,184,176,0.16)';
       c.fill(polyPath(hover.panel.poly));
       c.restore();
-      if (!hover.panel.merged) previewCutLine(c, hover.panel, s);
+      previewCutLine(c, hover.panel, s);
     }
 
     if ((hover.cut || (drag && drag.run))) {
@@ -2039,19 +1933,25 @@
     var dir = hover.alt ? (state.dir === 'h' ? 'v' : 'h') : state.dir;
     var at = clamp(dir === 'v' ? (hover.x - bb.x) / bb.w : (hover.y - bb.y) / bb.h, 0.05, 0.95);
     var probe = cloneMesh(mesh);
-    var face = probe.faces.filter(function (f) { return f.id === entry.face.id; })[0];
+    var face = faceById(probe, entry.face.id);
     if (!face) return;
+    // Every vertex the cut adds, in the order it added them: a line across both
+    // arms of a bent panel makes two edges, not one, and both should show.
     var before = probe.verts.length;
-    if (!splitFace(probe, face, dir, at, 0) || probe.verts.length < before + 1) return;
-    var a = probe.verts[before], b = probe.verts[before + 1] || probe.verts[before];
+    if (!splitAcross(probe, face, dir, at, 0)) return;
+    var made = probe.verts.slice(before), segments = [];
+    for (var i = 0; i + 1 < made.length; i += 2) segments.push([made[i], made[i + 1]]);
+    if (!segments.length) return;
     c.save();
     c.strokeStyle = '#ef4e23';
     c.lineWidth = 2 * s;
     c.setLineDash([10 * s, 7 * s]);
-    c.beginPath();
-    c.moveTo(a[0], a[1]);
-    c.lineTo(b[0], b[1]);
-    c.stroke();
+    segments.forEach(function (seg) {
+      c.beginPath();
+      c.moveTo(seg[0][0], seg[0][1]);
+      c.lineTo(seg[1][0], seg[1][1]);
+      c.stroke();
+    });
     c.restore();
   }
 
@@ -2358,11 +2258,13 @@
 
   // Would these two make one straight-sided panel? Asked of the regions as they
   // are now, so it stays true after cuts have been dragged around.
+  // Asked of a throwaway copy, so the answer is the one the real merge would
+  // give rather than a second opinion about it.
   function canMerge(id, target) {
     if (!target || target.ids.indexOf(id) >= 0) return false;
     var held = panelWithId(id);
     if (!held) return false;
-    return !!mergePolys([held.poly, target.poly]);
+    return !!fuseFaces(cloneMesh(mesh), [held.ids[0], target.ids[0]]);
   }
 
   canvas.addEventListener('mousemove', function (e) {
@@ -2414,7 +2316,7 @@
       canvas.style.cursor = 'move';
     } else {
       canvas.style.cursor = cu ? (Math.abs(cu.dir[0]) < 0.5 ? 'col-resize' : 'row-resize')
-                               : (pn && !pn.merged ? 'crosshair' : (pn ? 'context-menu' : 'default'));
+                               : (pn ? 'crosshair' : 'default');
     }
     if (changed || pn) render();
   });
@@ -2556,10 +2458,6 @@
     // that press was a drag, not a cut
     if (handleAt(p[0], p[1]) !== null || cutAt(p[0], p[1])) return;
     if (!pn) return;
-    if (pn.merged) {
-      say('합친 칸은 쪼갤 수 없습니다. 되돌리려면 Ctrl+Z를 쓰세요.');
-      return;
-    }
     splitPanel(pn, p[0], p[1], e.altKey ? (state.dir === 'h' ? 'v' : 'h') : state.dir, e.shiftKey);
   });
 
@@ -2597,16 +2495,17 @@
       say('이 둘은 합칠 수 없습니다 — 서로 변을 맞대고 있어야 하고, 가운데를 비워 감쌀 수는 없습니다.');
       return;                               // keep the selection, let them retry
     }
-    var joined = held.ids.concat(target.ids);
+    var probe = cloneMesh(mesh);
+    if (!fuseFaces(probe, [held.ids[0], target.ids[0]])) {
+      say('이 둘은 합칠 수 없습니다 — 서로 변을 맞대고 있어야 하고, 가운데를 비워 감쌀 수는 없습니다.');
+      return;
+    }
     push();
-    groups = groups.filter(function (g) {
-      return !g.some(function (id) { return joined.indexOf(id) >= 0; });
-    });
-    groups.push(joined);
+    mesh = probe;
     selected = null;
-    hover.panel = null;
+    forgetHover();
     render();
-    say('칸 ' + joined.length + '개를 하나로 합쳤습니다.');
+    say('두 칸을 하나로 합쳤습니다.');
   }
 
   function splitPanel(entry, x, y, dir, free) {
@@ -2623,14 +2522,18 @@
     // Cut a copy first: if what comes out is too tight to work in, the real page
     // never sees it.
     var probe = cloneMesh(mesh);
-    var face = probe.faces.filter(function (f) { return f.id === entry.face.id; })[0];
-    if (!face || !splitFace(probe, face, dir, at, 0) || !meshValid(probe, state.gutter + 24)) {
+    var face = faceById(probe, entry.face.id);
+    if (!face || !splitAcross(probe, face, dir, at, 0)) {
+      say('여기는 나눌 수 있는 자리가 아닙니다.');
+      return;
+    }
+    if (!meshValid(probe, state.gutter + 24)) {
       say('여기서 더 쪼개면 칸이 간격보다 작아집니다.');
       return;
     }
     push();
     mesh = probe;
-    hover.panel = null;
+    forgetHover();
     render();
     say('');
   }
