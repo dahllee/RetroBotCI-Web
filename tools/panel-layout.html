@@ -668,39 +668,38 @@
     return best;
   }
 
-  // Pull every cut edge in by d, leave page edges where they are, and rebuild
-  // each corner where the moved lines now cross.
+  // One pass of the offset: every cut edge pulled in by d, page edges left
+  // where they are, and each corner rebuilt where the moved lines now cross.
   //
   // This used to clip the panel by each offset edge line, which is exact for a
   // convex panel and wrong for a ㄱ-shaped one: a half-plane reaches clear
   // across the shape, so the cut that should only trim the notch slices the far
   // arm off as well. Intersecting neighbouring lines is local, so it does not.
-  function insetPoly(poly, d) {
-    if (d <= 0) return poly;
+  //
+  // Reports which edges came back pointing the wrong way rather than deciding
+  // what that means; `insetPoly` does that.
+  function insetPass(poly, d) {
     var n = poly.pts.length;
-    if (n < 3) return { pts: [], inner: [] };
+    if (n < 3) return null;
 
     var lines = [], i;
     for (i = 0; i < n; i++) {
       var a = poly.pts[i], b = poly.pts[(i + 1) % n];
       var ex = b[0] - a[0], ey = b[1] - a[1], L = Math.hypot(ex, ey);
-      if (L < 1e-9) return { pts: [], inner: [] };
+      if (L < 1e-9) return null;
       var ux = ex / L, uy = ey / L;
       var off = poly.inner[i] ? d : 0;
       lines.push({ px: a[0] - uy * off, py: a[1] + ux * off, dx: ux, dy: uy });
     }
 
-    var pts = [], flags = [], along = [];
+    var pts = [], flags = [], along = [], src = [];
     for (i = 0; i < n; i++) {
       var p = lines[(i - 1 + n) % n], q = lines[i];
       var den = p.dx * q.dy - p.dy * q.dx;
       if (Math.abs(den) < 1e-9) {
         // Two edges of one straight line, meeting where a neighbouring panel
-        // butts into it. That is not a corner of this panel, and keeping it
-        // leaves a stub of an edge that turns inside out the moment the gutter
-        // is wider than the stub - taking the whole panel with it. Only a real
-        // step, where the two sides pull back by different amounts, earns a
-        // vertex here.
+        // butts into it. That is not a corner of this panel. Only a real step,
+        // where the two sides pull back by different amounts, earns a vertex.
         if (poly.inner[(i - 1 + n) % n] === poly.inner[i]) continue;
         pts.push([q.px, q.py]);
       } else {
@@ -709,18 +708,39 @@
       }
       flags.push(poly.inner[i]);
       along.push(lines[i]);
+      src.push(i);
     }
-    if (pts.length < 3) return { pts: [], inner: [] };
+    if (pts.length < 3) return null;
 
-    // A panel thinner than the gutter turns itself inside out here - an edge
-    // comes back pointing the wrong way. Let it vanish, which is what the
-    // caller already knows how to report.
+    var back = [];
     for (i = 0; i < pts.length; i++) {
       var s = pts[i], e = pts[(i + 1) % pts.length];
-      if ((e[0] - s[0]) * along[i].dx + (e[1] - s[1]) * along[i].dy < -1e-9) return { pts: [], inner: [] };
+      if ((e[0] - s[0]) * along[i].dx + (e[1] - s[1]) * along[i].dy < -1e-9) back.push(src[i]);
     }
-    var out = { pts: pts, inner: flags };
-    return polyArea(out) < 1 ? { pts: [], inner: [] } : out;
+    return { poly: { pts: pts, inner: flags }, back: back };
+  }
+
+  // An edge that comes back pointing the wrong way has been swallowed by the
+  // gutter: it was shorter than the corners either side of it pulled in, and
+  // its neighbours now meet directly. That is one corner going, not the panel
+  // failing - a 3px step in the outline of a 750×1100 panel used to take the
+  // whole panel down with it, and it would quietly stop being drawn. So the
+  // swallowed edge is dropped and the corners worked out again. A panel that
+  // loses every edge this way really was thinner than the gutter, and vanishing
+  // is what the caller already knows how to report.
+  function insetPoly(poly, d) {
+    if (d <= 0) return poly;
+    var gone = { pts: [], inner: [] };
+    var pts = poly.pts.slice(), inner = poly.inner.slice();
+    for (var guard = pts.length + 1; guard > 0; guard--) {
+      var got = insetPass({ pts: pts, inner: inner }, d);
+      if (!got) return gone;
+      if (!got.back.length) return polyArea(got.poly) < 1 ? gone : got.poly;
+      pts.splice(got.back[0], 1);
+      inner.splice(got.back[0], 1);
+      if (pts.length < 3) return gone;
+    }
+    return gone;
   }
 
   // ══ Path ══════════════════════════════════════════════
