@@ -202,6 +202,15 @@
     input[type=range] { width: 100%; accent-color: #7eb8b0; display: block; }
     .row-btns { display: flex; gap: 8px; flex-wrap: wrap; }
     .hint-sm { font-size: 11px; color: #555; margin-top: 8px; letter-spacing: 0.02em; }
+    /* the four margins, two to a row - four stacked sliders push everything
+       below them off the screen */
+    .quad { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; margin-top: 6px; }
+    .quad > div { min-width: 0; }
+    .quad label {
+      display: block;
+      font-size: 11px; font-weight: 600; letter-spacing: 0.1em;
+      text-transform: uppercase; color: #666; margin-bottom: 2px;
+    }
     /* the drop target lights up only while a file is over it */
     .canvas-wrap.dropping { outline: 2px dashed #7eb8b0; outline-offset: -6px; }
     .colors { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
@@ -379,6 +388,13 @@
           <label for="h">세로 <span class="val" id="hv">225</span> <span class="unit-label">mm</span></label>
           <input type="range" id="h" min="40" max="800" step="1" value="225">
         </div>
+        <div>
+          <!-- Not a margin but a spare edge: the paper is cut a little off
+               every time, so ink meant to reach the edge has to start outside
+               it. The document grows by this on all four sides. -->
+          <label for="bleed">도련 <span class="val" id="bleedv">35</span> px <span class="hint-sm" id="bleedmm"></span></label>
+          <input type="range" id="bleed" min="0" max="200" step="1" value="35">
+        </div>
         <div class="side">
           <div>
             <label>단위</label>
@@ -425,9 +441,27 @@
       <p class="group first">칸 모양</p>
       <div class="field">
         <!-- Defaults are sized for the default page, A4 at 300dpi: roughly 12mm
-             of margin, a 4.7mm gutter and a 0.85mm border. -->
-        <label for="margin">바깥 여백 <span class="val" id="marginv">140</span> px</label>
-        <input type="range" id="margin" min="0" max="600" step="5" value="140">
+             of margin, a 4.7mm gutter and a 0.85mm border. One margin per side:
+             a bound page wants more room at the spine than at the fore edge. -->
+        <label>바깥 여백 <span class="hint-sm" id="marginsum"></span></label>
+        <div class="quad">
+          <div>
+            <label for="mt">위 <span class="val" id="mtv">140</span> px</label>
+            <input type="range" id="mt" min="0" max="600" step="5" value="140">
+          </div>
+          <div>
+            <label for="mb">아래 <span class="val" id="mbv">140</span> px</label>
+            <input type="range" id="mb" min="0" max="600" step="5" value="140">
+          </div>
+          <div>
+            <label for="ml">왼쪽 <span class="val" id="mlv">140</span> px</label>
+            <input type="range" id="ml" min="0" max="600" step="5" value="140">
+          </div>
+          <div>
+            <label for="mr">오른쪽 <span class="val" id="mrv">140</span> px</label>
+            <input type="range" id="mr" min="0" max="600" step="5" value="140">
+          </div>
+        </div>
       </div>
       <div class="field">
         <label for="gutter">칸 간격 <span class="val" id="gutterv">56</span> px</label>
@@ -521,8 +555,14 @@
         칸 안을 <strong>클릭</strong>하면 그 자리에서 갈라집니다. <kbd>Alt</kbd>를 누른 채 클릭하면 반대 방향으로 갈라집니다.
         경계선을 <strong>드래그</strong>하면 그 선이 통째로 움직이고, 선이 만나는 <strong>꼭짓점</strong>을 드래그하면 거기 모인 선들이 기울어집니다.
         <kbd>Alt</kbd>를 누른 채 경계선을 끌면 <strong>잡은 조각만</strong> 떨어져 나와, 한 단만 옆으로 어긋난 배치를 만들 수 있습니다.
-        선과 칸을 나눌 자리는 다른 경계선이나 페이지 한가운데에 <strong>달라붙습니다</strong> — 달라붙는 자리가 점선으로 표시되고, <kbd>Shift</kbd>를 누르면 붙지 않습니다.
+        선과 칸을 나눌 자리는 다른 경계선이나 페이지 한가운데, <strong>재단선</strong>에 <strong>달라붙습니다</strong> — 달라붙는 자리가 점선으로 표시되고, <kbd>Shift</kbd>를 누르면 붙지 않습니다.
         <kbd>Ctrl</kbd>+<kbd>Z</kbd>로 되돌립니다.
+      </p>
+      <p class="note">
+        주황 점선이 <strong>재단선</strong>입니다. 그 바깥이 <strong>도련</strong>이고, 종이는 재단선 언저리에서 잘립니다 —
+        가장자리까지 채울 그림은 도련 끝까지 그려야 잘린 자리에 흰 띠가 남지 않습니다.
+        재단선은 화면에만 보이고 내보내는 파일에는 그려지지 않지만, <strong>PSD에는 그 자리에 안내선</strong>이 깔려 나옵니다.
+        <strong>바깥 여백</strong>은 네 방향을 따로 정할 수 있습니다 — 제본되는 쪽을 넓게 잡을 때 씁니다.
       </p>
       <p class="note">
         칸 합치기는 <strong>오른쪽 클릭</strong> 두 번입니다. 한 번은 칸을 선택하고, 두 번째로 합칠 칸을 오른쪽 클릭하면 둘이 한 칸이 됩니다.
@@ -1527,8 +1567,14 @@
     // w/h are always the pixel size everything else is drawn and exported at.
     // In mm they are derived from mmW/mmH and the resolution; in px they are
     // what the sliders set directly.
+    // w/h are the trim size - the page as it comes back from the guillotine.
+    // The document is that plus the bleed on all four sides.
     unit: 'mm', mmW: 152, mmH: 225, dpi: 300,
-    w: 1795, h: 2657, margin: 140, gutter: 56, sw: 10, radius: 0,
+    w: 1795, h: 2657, bleed: 35,
+    // one per side: a bound page wants more room at the spine than the fore
+    // edge, and 천/지 are rarely the same either
+    mt: 140, mb: 140, ml: 140, mr: 140,
+    gutter: 56, sw: 10, radius: 0,
     fill: '#ffffff', stroke: '#000000',
     dir: 'h', rtl: false, numbers: true, count: 6, dyn: 40, seed: 7,
     refFit: 'contain', refOpacity: 50
@@ -1698,9 +1744,47 @@
 
   // ══ Render ════════════════════════════════════════════
 
+  // The whole document: the trim size with the bleed added on all four sides.
+  // Everything is drawn and exported at this size, so a panel meant to run off
+  // the page has somewhere to run to.
+  function docSize() {
+    var b = bleedPx();
+    return { w: state.w + b * 2, h: state.h + b * 2 };
+  }
+
+  // Where the guillotine comes down. The page as chosen sits inside the
+  // document, one bleed in from every edge.
+  function trimRect() {
+    var b = bleedPx();
+    return { x: b, y: b, w: state.w, h: state.h };
+  }
+
+  function bleedPx() {
+    return Math.max(0, Math.min(state.bleed, Math.min(state.w, state.h) / 2));
+  }
+
+  // The four margins as they can actually be honoured. Set wide enough they
+  // would meet in the middle and leave no page at all, so a pair that asks for
+  // more than there is gives way in proportion and keeps its share of what is
+  // left - which is what a slider being dragged looks like from the other side.
+  function marginsPx() {
+    var m = { t: state.mt, b: state.mb, l: state.ml, r: state.mr };
+    var least = 20;
+    var across = m.l + m.r, down = m.t + m.b;
+    if (across > state.w - least) {
+      var kx = (state.w - least) / across;
+      m.l *= kx; m.r *= kx;
+    }
+    if (down > state.h - least) {
+      var ky = (state.h - least) / down;
+      m.t *= ky; m.b *= ky;
+    }
+    return m;
+  }
+
   function pageRect() {
-    var m = Math.min(state.margin, Math.min(state.w, state.h) / 2 - 10);
-    return { x: m, y: m, w: state.w - m * 2, h: state.h - m * 2 };
+    var t = trimRect(), m = marginsPx();
+    return { x: t.x + m.l, y: t.y + m.t, w: state.w - m.l - m.r, h: state.h - m.t - m.b };
   }
 
   function rootPoly() {
@@ -1766,11 +1850,12 @@
     view.cuts = built.cuts;
     view.panels.forEach(function (p) { p.knots = panelKnots(p.poly); });
 
-    if (canvas.width !== state.w || canvas.height !== state.h) {
-      canvas.width = state.w;
-      canvas.height = state.h;
+    var doc = docSize();
+    if (canvas.width !== doc.w || canvas.height !== doc.h) {
+      canvas.width = doc.w;
+      canvas.height = doc.h;
     }
-    ctx.clearRect(0, 0, state.w, state.h);
+    ctx.clearRect(0, 0, doc.w, doc.h);
     paintUnderlay(ctx);
     paintPage(ctx);
     paintOverlay(ctx);
@@ -1781,6 +1866,14 @@
     var size = state.unit === 'mm'
       ? state.mmW + ' × ' + state.mmH + ' mm · ' + state.dpi + 'dpi · ' + state.w + ' × ' + state.h + ' px'
       : state.w + ' × ' + state.h + ' px · ' + state.dpi + 'dpi';
+    // The trim is what was asked for; say what the file will actually be when
+    // the bleed has been added to it.
+    var doc2 = docSize();
+    if (bleedPx() > 0) {
+      size += ' · 도련 포함 ' + (state.unit === 'mm'
+        ? (state.mmW + pxToMm(bleedPx()) * 2) + ' × ' + (state.mmH + pxToMm(bleedPx()) * 2) + ' mm'
+        : doc2.w + ' × ' + doc2.h + ' px');
+    }
     // Two pages of the same shape but different sizes are both fitted to the
     // same box, so without this the difference between A4 and 국판 never
     // reaches the screen.
@@ -1806,19 +1899,33 @@
   }
 
   // Where the thumbnail sits on the page, for the three ways of fitting it.
+  // Fitted to the trim, not to the document: what is being traced is the page
+  // as it will be read, and the bleed is off the edge of that.
   function refBox() {
     var iw = ref.img.naturalWidth, ih = ref.img.naturalHeight;
-    var k = 1;
-    if (state.refFit === 'contain') k = Math.min(state.w / iw, state.h / ih);
-    else if (state.refFit === 'cover') k = Math.max(state.w / iw, state.h / ih);
+    var t = trimRect(), k = 1;
+    if (state.refFit === 'contain') k = Math.min(t.w / iw, t.h / ih);
+    else if (state.refFit === 'cover') k = Math.max(t.w / iw, t.h / ih);
     var w = iw * k, h = ih * k;
-    return { x: (state.w - w) / 2, y: (state.h - h) / 2, w: w, h: h };
+    return { x: t.x + (t.w - w) / 2, y: t.y + (t.h - h) / 2, w: w, h: h };
   }
 
   // Everything below this line is drawn for the person holding the mouse and
   // for nobody else - it never reaches the canvas the exports read from.
   function paintOverlay(c) {
     var s = viewScale();
+
+    // Where the guillotine comes down. Only worth drawing when there is bleed
+    // to tell it apart from the edge of the document.
+    if (bleedPx() > 0) {
+      var t = trimRect();
+      c.save();
+      c.strokeStyle = 'rgba(239,78,35,0.55)';
+      c.lineWidth = 2 * s;
+      c.setLineDash([18 * s, 12 * s]);
+      c.strokeRect(t.x, t.y, t.w, t.h);
+      c.restore();
+    }
 
     // While a panel is selected for merging, the page stops offering to cut and
     // starts answering one question instead: can this one join it?
@@ -2123,8 +2230,14 @@
   var SNAP_REACH = 8;          // screen pixels, so it feels the same at any zoom
 
   function snapTargets(axis, exclude) {
-    var r = pageRect();
+    var r = pageRect(), t = trimRect();
     var out = [axis ? r.y + r.h / 2 : r.x + r.w / 2];
+    // the cut itself is worth landing on: a panel run out to the trim is a
+    // panel that reaches the edge of the page once the paper is cut
+    if (bleedPx() > 0) {
+      out.push(axis ? t.y : t.x);
+      out.push(axis ? t.y + t.h : t.x + t.w);
+    }
     view.cuts.forEach(function (run) {
       if (run === exclude) return;
       // running the same way as the one being moved, so worth lining up with
@@ -2337,6 +2450,11 @@
       xs.push(v[0]);
       ys.push(v[1]);
     });
+    if (bleedPx() > 0) {
+      var t = trimRect();
+      xs.push(t.x, t.x + t.w);
+      ys.push(t.y, t.y + t.h);
+    }
     var x = snapValue(p[0], xs, reach), y = snapValue(p[1], ys, reach);
     if (x !== p[0] || y !== p[1]) {
       view.snap = { point: [x !== p[0] ? x : null, y !== p[1] ? y : null] };
@@ -2695,10 +2813,24 @@
     return { r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16) };
   }
 
+  // Four guides on the trim - two down the page, two across. A vertical guide
+  // is placed by its x, a horizontal one by its y. With no bleed the trim is
+  // the document edge and there is nothing worth marking.
+  function trimGuides() {
+    var t = trimRect();
+    if (bleedPx() <= 0) return [];
+    return [
+      { location: t.x, direction: 'vertical' },
+      { location: t.x + t.w, direction: 'vertical' },
+      { location: t.y, direction: 'horizontal' },
+      { location: t.y + t.h, direction: 'horizontal' }
+    ];
+  }
+
   function cleanCanvas() {
-    var c = document.createElement('canvas');
-    c.width = state.w;
-    c.height = state.h;
+    var c = document.createElement('canvas'), doc = docSize();
+    c.width = doc.w;
+    c.height = doc.h;
     paintPage(c.getContext('2d'));
     return c;
   }
@@ -2708,8 +2840,9 @@
       var drawn = view.panels.filter(function (l) { return l.knots; });
       if (!drawn.length) { say('그릴 칸이 없습니다.'); return; }
 
+      var doc = docSize();
       var flat = cleanCanvas();
-      var flatData = flat.getContext('2d').getImageData(0, 0, state.w, state.h);
+      var flatData = flat.getContext('2d').getImageData(0, 0, doc.w, doc.h);
 
       // Each panel becomes a FOLDER carrying the vector mask, with the border as
       // a layer style on that same folder. The point is that there is only ever
@@ -2720,10 +2853,10 @@
         // Bound the contents to the panel. A full-page buffer per layer would
         // run to hundreds of megabytes on an A4 page at 300dpi.
         var b = knotsBBox(l.knots);
-        var left = clamp(Math.floor(b.minX) - 1, 0, state.w);
-        var top = clamp(Math.floor(b.minY) - 1, 0, state.h);
-        var right = clamp(Math.ceil(b.maxX) + 1, 0, state.w);
-        var bottom = clamp(Math.ceil(b.maxY) + 1, 0, state.h);
+        var left = clamp(Math.floor(b.minX) - 1, 0, doc.w);
+        var top = clamp(Math.floor(b.minY) - 1, 0, doc.h);
+        var right = clamp(Math.ceil(b.maxX) + 1, 0, doc.w);
+        var bottom = clamp(Math.ceil(b.maxY) + 1, 0, doc.h);
         var lw = right - left, lh = bottom - top;
         if (lw < 1 || lh < 1) return null;
 
@@ -2776,8 +2909,8 @@
       // children run bottom to top, so reversing puts 칸 1 at the top of the
       // layers palette - where the reader's eye starts
       var psd = {
-        width: state.w,
-        height: state.h,
+        width: doc.w,
+        height: doc.h,
         imageData: flatData,
         // Without this Photoshop calls the page 72dpi and prints it four times
         // too big. The border size is in pixels either way, so nothing else
@@ -2786,6 +2919,13 @@
           resolutionInfo: {
             horizontalResolution: state.dpi, horizontalResolutionUnit: 'PPI', widthUnit: 'Inches',
             verticalResolution: state.dpi, verticalResolutionUnit: 'PPI', heightUnit: 'Inches'
+          },
+          // Guides on the trim, so the cut is visible while drawing. Nothing is
+          // put on the bleed edge: that is the edge of the document, and a
+          // guide lying along it is a guide nobody can see.
+          gridAndGuidesInformation: {
+            grid: { horizontal: 576, vertical: 576 },
+            guides: trimGuides()
           }
         },
         children: folders.reverse()
@@ -2811,8 +2951,9 @@
                   ' stroke-miterlimit="10" clip-path="url(#panel-clip-' + id + ')"/>');
       }
     });
-    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + state.w +
-              '" height="' + state.h + '" viewBox="0 0 ' + state.w + ' ' + state.h + '">\n' +
+    var doc = docSize();
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + doc.w +
+              '" height="' + doc.h + '" viewBox="0 0 ' + doc.w + ' ' + doc.h + '">\n' +
               (defs.length ? '  <defs>\n' + defs.join('\n') + '\n  </defs>\n' : '') +
               body.join('\n') + '\n</svg>\n';
     save(new Blob([svg], { type: 'image/svg+xml' }), filename('svg'));
@@ -2902,7 +3043,11 @@
   // Everything measured in pixels - margins, gutters, the border - has to grow
   // with the resolution, or raising it would quietly halve the design while the
   // page itself stayed the same size on paper.
-  var METRIC_BASE = { margin: [0, 600, 5], gutter: [0, 320, 2], sw: [0, 80, 1], radius: [0, 160, 1] };
+  var METRIC_BASE = {
+    bleed: [0, 200, 1],
+    mt: [0, 600, 5], mb: [0, 600, 5], ml: [0, 600, 5], mr: [0, 600, 5],
+    gutter: [0, 320, 2], sw: [0, 80, 1], radius: [0, 160, 1]
+  };
 
   function showMetrics() {
     var k = state.unit === 'mm' ? state.dpi / 300 : 1;
@@ -2914,6 +3059,19 @@
       el.value = state[id];
       document.getElementById(id + 'v').textContent = state[id];
     });
+    showNotes();
+  }
+
+  // Bleed is asked for in millimetres by every printer alive, so say what the
+  // pixels come to. And say when margins have been asked for that the page
+  // cannot give, rather than letting the sliders quietly mean nothing.
+  function showNotes() {
+    document.getElementById('bleedmm').textContent =
+      state.unit === 'mm' && state.bleed > 0 ? '(' + pxToMm(state.bleed) + 'mm)' : '';
+    var m = marginsPx();
+    var tight = Math.abs(m.t - state.mt) > 0.5 || Math.abs(m.b - state.mb) > 0.5 ||
+                Math.abs(m.l - state.ml) > 0.5 || Math.abs(m.r - state.mr) > 0.5;
+    document.getElementById('marginsum').textContent = tight ? '— 페이지에 맞게 줄였습니다' : '';
   }
 
   function setDpi(next) {
@@ -3012,7 +3170,7 @@
   });
 
   var slider = {};
-  ['w', 'h', 'margin', 'gutter', 'sw', 'radius', 'count', 'dyn'].forEach(function (id) {
+  ['w', 'h', 'bleed', 'mt', 'mb', 'ml', 'mr', 'gutter', 'sw', 'radius', 'count', 'dyn'].forEach(function (id) {
     var el = document.getElementById(id);
     slider[id] = el;
     var out = document.getElementById(id + 'v');
@@ -3030,6 +3188,7 @@
       } else {
         state[id] = v;
       }
+      showNotes();
       render();
     });
   });
