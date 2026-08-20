@@ -431,6 +431,18 @@
         <button class="btn btn-ghost btn-sm" id="reseed">새 배치</button>
       </div>
     </div>
+    <div class="field">
+      <!-- The working file. Everything on this page - the layout, the page it
+           sits on, and how a panel is drawn - written out as text that can be
+           opened again later. The exports are the finished thing; this is the
+           thing still being worked on. -->
+      <label>배치 파일</label>
+      <input type="file" id="layout-file" accept="application/json,.json" hidden>
+      <div class="row-btns">
+        <button class="btn btn-ghost btn-sm" id="layout-save">저장</button>
+        <button class="btn btn-ghost btn-sm" id="layout-open">불러오기</button>
+      </div>
+    </div>
   </div>
 
   <div class="studio">
@@ -563,6 +575,11 @@
         가장자리까지 채울 그림은 도련 끝까지 그려야 잘린 자리에 흰 띠가 남지 않습니다.
         재단선은 화면에만 보이고 내보내는 파일에는 그려지지 않지만, <strong>PSD에는 그 자리에 안내선</strong>이 깔려 나옵니다.
         <strong>바깥 여백</strong>은 네 방향을 따로 정할 수 있습니다 — 제본되는 쪽을 넓게 잡을 때 씁니다.
+      </p>
+      <p class="note">
+        <strong>배치 파일</strong>은 지금 페이지를 통째로 담은 작은 텍스트 파일입니다 — 칸 배치와 페이지 크기, 도련과 여백,
+        칸 모양과 읽는 순서까지 들어갑니다. 나중에 <strong>불러오기</strong>로 열면 그 자리에서 이어서 작업합니다.
+        참고 이미지는 담기지 않습니다. 불러오기도 <kbd>Ctrl</kbd>+<kbd>Z</kbd>로 되돌릴 수 있습니다.
       </p>
       <p class="note">
         칸 합치기는 <strong>오른쪽 클릭</strong> 두 번입니다. 한 번은 칸을 선택하고, 두 번째로 합칠 칸을 오른쪽 클릭하면 둘이 한 칸이 됩니다.
@@ -2808,6 +2825,121 @@
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
   }
 
+  // ── The working file ─────────────────────────────────────
+  // Text, so it can be read and kept. The exports are the finished page; this
+  // is the page as it stands, with everything needed to carry on from here. The
+  // reference image is deliberately left out: a path saved now names a file the
+  // browser will not be allowed to open next time, which is worse than nothing.
+
+  var FILE_KIND = 'retrobot-panel-layout';
+  var FILE_VERSION = 1;
+  var PAGE_KEYS = ['unit', 'mmW', 'mmH', 'dpi', 'w', 'h', 'bleed', 'mt', 'mb', 'ml', 'mr'];
+  var PANEL_KEYS = ['gutter', 'sw', 'radius', 'fill', 'stroke'];
+  var VIEW_KEYS = ['dir', 'rtl', 'numbers'];
+  var AUTO_KEYS = ['count', 'dyn', 'seed'];
+
+  function layoutFile() {
+    var out = { kind: FILE_KIND, version: FILE_VERSION, page: {}, panel: {}, view: {}, auto: {} };
+    PAGE_KEYS.forEach(function (k) { out.page[k] = state[k]; });
+    PANEL_KEYS.forEach(function (k) { out.panel[k] = state[k]; });
+    VIEW_KEYS.forEach(function (k) { out.view[k] = state[k]; });
+    AUTO_KEYS.forEach(function (k) { out.auto[k] = state[k]; });
+    out.mesh = {
+      verts: mesh.verts.map(function (p) { return [round4(p[0]), round4(p[1])]; }),
+      faces: mesh.faces.map(function (f) {
+        var e = { id: f.id, vs: f.vs.slice() };
+        if (f.joined) e.joined = true;
+        return e;
+      }),
+      page: { x: round4(mesh.page.x), y: round4(mesh.page.y),
+              w: round4(mesh.page.w), h: round4(mesh.page.h) }
+    };
+    out.order = order && order.slice();
+    return out;
+  }
+
+  function round4(n) { return Math.round(n * 1e4) / 1e4; }
+
+  function num(v) { return typeof v === 'number' && isFinite(v); }
+
+  // Enough of a check that a file which is not one of ours, or has been cut
+  // short, says so rather than half-loading and leaving the page in a state
+  // nobody can get out of.
+  function readLayout(text) {
+    var f = JSON.parse(text);
+    if (!f || f.kind !== FILE_KIND) throw new Error('이 도구의 배치 파일이 아닙니다');
+    if (f.version > FILE_VERSION) throw new Error('더 새로운 버전의 파일입니다');
+    var m = f.mesh;
+    if (!m || !Array.isArray(m.verts) || !Array.isArray(m.faces) || !m.page) throw new Error('배치가 없습니다');
+    if (!m.faces.length) throw new Error('칸이 하나도 없습니다');
+    // Asked with typeof, not with isFinite alone: isFinite(null) is true, and a
+    // null that gets through lands on the page as a corner at zero.
+    m.verts.forEach(function (p) {
+      if (!Array.isArray(p) || p.length !== 2 || !num(p[0]) || !num(p[1])) {
+        throw new Error('꼭짓점이 깨졌습니다');
+      }
+    });
+    ['x', 'y', 'w', 'h'].forEach(function (k) {
+      if (!num(m.page[k])) throw new Error('페이지 크기가 깨졌습니다');
+    });
+    m.faces.forEach(function (e) {
+      if (!e || !Array.isArray(e.vs) || e.vs.length < 3) throw new Error('칸이 깨졌습니다');
+      if (!num(e.id)) throw new Error('칸 번호가 깨졌습니다');
+      e.vs.forEach(function (i) {
+        if (!num(i) || i % 1 !== 0 || i < 0 || i >= m.verts.length) {
+          throw new Error('칸이 없는 꼭짓점을 가리킵니다');
+        }
+      });
+    });
+    if (f.order && !Array.isArray(f.order)) throw new Error('읽는 순서가 깨졌습니다');
+    return f;
+  }
+
+  function applyLayout(f) {
+    push();
+    [[PAGE_KEYS, f.page], [PANEL_KEYS, f.panel], [VIEW_KEYS, f.view], [AUTO_KEYS, f.auto]]
+      .forEach(function (pair) {
+        if (!pair[1]) return;
+        pair[0].forEach(function (k) { if (pair[1][k] !== undefined) state[k] = pair[1][k]; });
+      });
+    mesh = {
+      verts: f.mesh.verts.map(function (p) { return [p[0], p[1]]; }),
+      faces: f.mesh.faces.map(function (e) {
+        return { id: e.id, vs: e.vs.slice(), joined: !!e.joined };
+      }),
+      page: { x: f.mesh.page.x, y: f.mesh.page.y, w: f.mesh.page.w, h: f.mesh.page.h }
+    };
+    // New cuts must not hand out an id the file is already using
+    mesh.faces.forEach(function (fc) { if (fc.id >= nextFaceId) nextFaceId = fc.id + 1; });
+    order = f.order ? f.order.slice() : null;
+    selected = null;
+    forgetHover();
+    showControls();
+    render();
+  }
+
+  // Every control keeps its own display, so loading has to put them all back.
+  function showControls() {
+    showSize();
+    showMetrics();
+    press(presetHost, null);
+    var pi = PRINT_PAGES.map(function (e) { return e[1] + '×' + e[2]; })
+      .indexOf(state.mmW + '×' + state.mmH);
+    var si = SCREEN_PAGES.map(function (e) { return e[1] + '×' + e[2]; })
+      .indexOf(state.w + '×' + state.h);
+    press(printHost, state.unit === 'mm' && pi >= 0 ? printHost.children[pi] : null);
+    press(screenHost, state.unit === 'px' && si >= 0 ? screenHost.children[si] : null);
+    press(unitHost, unitHost.children[state.unit === 'mm' ? 0 : 1]);
+    var dirHost = document.getElementById('dirs');
+    press(dirHost, dirHost.children[state.dir === 'h' ? 0 : 1]);
+    var orderHost = document.getElementById('orders');
+    press(orderHost, orderHost.children[state.rtl ? 0 : 1]);
+    numbersBtn.setAttribute('aria-pressed', String(state.numbers));
+    ['fill', 'stroke'].forEach(function (id) {
+      document.getElementById(id).value = state[id];
+    });
+  }
+
   function hexToRgb(hex) {
     var h = hex.replace('#', '');
     return { r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16) };
@@ -3218,6 +3350,42 @@
       state[id] = e.target.value;
       render();
     });
+  });
+
+  var layoutFileInput = document.getElementById('layout-file');
+
+  document.getElementById('layout-save').addEventListener('click', function () {
+    try {
+      var text = JSON.stringify(layoutFile(), null, 1);
+      save(new Blob([text], { type: 'application/json' }),
+           'panels-' + view.panels.length + '.json');
+      say('배치를 저장했습니다 — 이 파일을 다시 불러오면 이어서 작업할 수 있습니다.');
+    } catch (err) {
+      say('저장하지 못했습니다: ' + err.message);
+    }
+  });
+
+  document.getElementById('layout-open').addEventListener('click', function () {
+    layoutFileInput.click();
+  });
+
+  layoutFileInput.addEventListener('change', function () {
+    var file = layoutFileInput.files && layoutFileInput.files[0];
+    // cleared straight away, or picking the same file twice in a row is silent
+    layoutFileInput.value = '';
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var f = readLayout(String(reader.result));
+        applyLayout(f);
+        say('배치를 불러왔습니다 — 되돌리기로 이전 배치로 돌아갈 수 있습니다.');
+      } catch (err) {
+        say('불러오지 못했습니다: ' + err.message);
+      }
+    };
+    reader.onerror = function () { say('파일을 읽지 못했습니다.'); };
+    reader.readAsText(file);
   });
 
   // ══ Reference image ═══════════════════════════════════
