@@ -450,7 +450,7 @@
     <div class="panel">
       <!-- ── 칸 모양 ── how a panel is drawn, once the layout has decided where
            it goes. -->
-      <p class="group first">칸 모양</p>
+      <p class="group first">칸 모양 <span class="hint-sm" id="shape-scope"></span></p>
       <div class="field">
         <!-- Defaults are sized for the default page, A4 at 300dpi: roughly 12mm
              of margin, a 4.7mm gutter and a 0.85mm border. One margin per side:
@@ -553,6 +553,10 @@
         <label>쪼개기</label>
         <div class="chips row" id="dirs"></div>
         <span class="spacer"></span>
+        <!-- Merging acts on whatever has been picked out, so it belongs beside
+             the canvas rather than in a card describing the page. -->
+        <span class="hint-sm" id="pickedv"></span>
+        <button class="btn btn-ghost btn-sm" id="merge" disabled>합치기</button>
         <button class="btn btn-ghost btn-sm" id="undo" disabled>되돌리기</button>
       </div>
       <div class="canvas-wrap"><canvas id="preview"></canvas><div id="tip"></div></div>
@@ -564,11 +568,11 @@
         <button class="btn btn-ghost" id="copy-png">PNG 복사</button>
       </div>
       <p class="note">
-        칸 안을 <strong>클릭</strong>하면 그 자리에서 갈라집니다. <kbd>Alt</kbd>를 누른 채 클릭하면 반대 방향으로 갈라집니다.
+        칸 안을 <strong>오른쪽 클릭</strong>하면 그 자리에서 갈라집니다. <kbd>Alt</kbd>를 누른 채면 반대 방향으로 갈라집니다.
         경계선을 <strong>드래그</strong>하면 그 선이 통째로 움직이고, 선이 만나는 <strong>꼭짓점</strong>을 드래그하면 거기 모인 선들이 기울어집니다.
         <kbd>Alt</kbd>를 누른 채 경계선을 끌면 <strong>잡은 조각만</strong> 떨어져 나와, 한 단만 옆으로 어긋난 배치를 만들 수 있습니다.
         선과 칸을 나눌 자리는 다른 경계선이나 페이지 한가운데, <strong>재단선</strong>에 <strong>달라붙습니다</strong> — 달라붙는 자리가 점선으로 표시되고, <kbd>Shift</kbd>를 누르면 붙지 않습니다.
-        <kbd>Ctrl</kbd>+<kbd>Z</kbd>로 되돌립니다.
+        <kbd>Ctrl</kbd>+<kbd>Z</kbd>로 되돌립니다. 슬라이더로 조절한 값도 되돌아가며, 드래그 한 번이 한 단계입니다.
       </p>
       <p class="note">
         주황 점선이 <strong>재단선</strong>입니다. 그 바깥이 <strong>도련</strong>이고, 종이는 재단선 언저리에서 잘립니다 —
@@ -582,11 +586,16 @@
         참고 이미지는 담기지 않습니다. 불러오기도 <kbd>Ctrl</kbd>+<kbd>Z</kbd>로 되돌릴 수 있습니다.
       </p>
       <p class="note">
-        칸 합치기는 <strong>오른쪽 클릭</strong> 두 번입니다. 한 번은 칸을 선택하고, 두 번째로 합칠 칸을 오른쪽 클릭하면 둘이 한 칸이 됩니다.
-        <strong>초록으로 물드는 칸</strong>만 되는데, 변을 맞대고 있어 한 덩어리가 되는 칸입니다.
-        <strong>ㄱ자·ㄷ자</strong>처럼 꺾인 칸도 되고, 합친 칸에 또 붙여 계속 키울 수도 있습니다.
-        칸을 선택한 상태에서 <kbd>Esc</kbd>나 왼쪽 클릭은 선택을 해제합니다.
-        합친 칸도 다시 오른쪽 클릭해 다른 칸과 더 합칠 수 있습니다 — 풀려면 <kbd>Ctrl</kbd>+<kbd>Z</kbd>로 되돌리세요.
+        칸 안을 <strong>왼쪽 클릭</strong>하면 그 칸을 <strong>고릅니다</strong>. 다시 누르면 풀리고, 여러 칸을 골라둘 수 있습니다.
+        빈 곳을 클릭하거나 <kbd>Esc</kbd>를 누르면 전부 풀립니다.
+        고른 칸이 둘 이상이고 서로 변을 맞대 한 덩어리가 되면 <strong>합치기</strong> 버튼이 켜집니다 —
+        <strong>ㄱ자·ㄷ자</strong>처럼 꺾인 칸도 되고, 합친 칸을 다시 골라 더 키울 수도 있습니다. 풀려면 <kbd>Ctrl</kbd>+<kbd>Z</kbd>로 되돌리세요.
+      </p>
+      <p class="note">
+        칸을 골라두면 왼쪽의 <strong>칸 모양</strong>이 그 칸들에만 걸립니다 — 테두리를 없애거나 굵게, 모서리를 둥글게,
+        바탕을 검게 하는 식으로 칸마다 다르게 줄 수 있습니다. 아무 칸도 고르지 않았으면 지금처럼 페이지 전체에 걸립니다.
+        <strong>칸 간격</strong>만은 늘 페이지 전체입니다 — 이웃한 두 칸이 절반씩 내주는 값이라 한 칸만 다르게 할 수 없습니다.
+        칸에 준 값을 페이지 값과 같게 되돌리면 그 칸은 다시 페이지를 따라갑니다.
       </p>
       <p class="note">
         <strong>PSD</strong>는 칸마다 폴더 하나로 나옵니다. 폴더에 벡터 마스크가 걸려 있어 안의 <strong>그림</strong> 레이어에 그리면 칸 모양대로 잘리고,
@@ -909,7 +918,10 @@
   function cloneMesh(m) {
     return {
       verts: m.verts.map(function (p) { return [p[0], p[1]]; }),
-      faces: m.faces.map(function (f) { return { id: f.id, vs: f.vs.slice(), joined: f.joined }; }),
+      faces: m.faces.map(function (f) {
+        return { id: f.id, vs: f.vs.slice(), joined: f.joined,
+                 style: f.style ? JSON.parse(JSON.stringify(f.style)) : undefined };
+      }),
       page: { x: m.page.x, y: m.page.y, w: m.page.w, h: m.page.h }
     };
   }
@@ -1603,7 +1615,9 @@
   var ref = { img: null, url: null, hidden: false };
 
   var mesh = null;          // built once the page rectangle is known
-  var selected = null;      // face id waiting for a partner to merge with
+  // Face ids the hand has picked out. One idea serving two jobs: what to join
+  // together, and what to give a shape of its own.
+  var picked = [];
   // Face ids in reading order, once someone has said otherwise. Null means work
   // it out from where the panels are, which is right until it is not - a
   // staggered page can read in an order no rule about tiers will guess.
@@ -1616,6 +1630,8 @@
   var tip = document.getElementById('tip');
   var tipWrap = document.querySelector('.canvas-wrap');
   var undoBtn = document.getElementById('undo');
+  var mergeBtn = document.getElementById('merge');
+  var pickedOut = document.getElementById('pickedv');
 
   var view = { panels: [], cuts: [], snap: null };
   var hover = { panel: null, cut: null, vertex: null, badge: null, x: 0, y: 0 };
@@ -1700,8 +1716,20 @@
     state.h = mmToPx(state.mmH);
   }
 
-  function push() {
-    history.push({ mesh: cloneMesh(mesh), order: order && order.slice() });
+  // The whole page as it stands. Undo used to carry only the layout, which made
+  // half the controls quietly one-way: the page size, the gutter, the colours
+  // all changed the drawing and none of them could be taken back. Which of two
+  // sliders is undoable is not something anyone should have to remember.
+  function snapshot() {
+    var s = {};
+    Object.keys(state).forEach(function (k) { s[k] = state[k]; });
+    return { mesh: cloneMesh(mesh), order: order && order.slice(), state: s };
+  }
+
+  function push() { keep(snapshot()); }
+
+  function keep(rec) {
+    history.push(rec);
     if (history.length > 60) history.shift();
     undoBtn.disabled = false;
   }
@@ -1713,18 +1741,26 @@
     var was = history.pop();
     mesh = was.mesh;
     order = was.order;
-    selected = null;
+    if (was.state) Object.keys(was.state).forEach(function (k) { state[k] = was.state[k]; });
+    picked = [];
     forgetHover();
     undoBtn.disabled = !history.length;
+    showControls();
     render();
     say('되돌렸습니다.');
   }
 
   function replaceMesh(next) {
     push();
+    setMesh(next);
+  }
+
+  // Without the history step: the auto-layout sliders take their own, once per
+  // drag rather than once per pixel of it.
+  function setMesh(next) {
     mesh = next;
     order = null;                 // a new layout reads in its own order
-    selected = null;
+    picked = [];
     forgetHover();
   }
 
@@ -1815,11 +1851,25 @@
   // The panel as it gets drawn: region pulled back by half the gutter on its cut
   // edges, corners rounded. Two neighbours each give up half, so the gap between
   // them is the gutter.
-  function panelKnots(poly) {
+  function panelKnots(poly, style) {
     var inset = insetPoly(poly, state.gutter / 2);
     if (inset.pts.length < 3) return null;
-    var knots = polyKnots(inset, state.radius);
+    var knots = polyKnots(inset, style.radius);
     return knots.length >= 2 ? knots : null;
+  }
+
+  // How one panel is drawn: the page's settings, with anything the panel says
+  // for itself laid over them. The gutter is deliberately not among them - it
+  // is what two neighbours each give up half of, so it belongs to the pair
+  // rather than to either one.
+  var STYLE_KEYS = ['sw', 'radius', 'fill', 'stroke'];
+
+  function styleOf(face) {
+    var out = {};
+    STYLE_KEYS.forEach(function (k) {
+      out[k] = face && face.style && face.style[k] !== undefined ? face.style[k] : state[k];
+    });
+    return out;
   }
 
   // The border is drawn INSIDE the panel outline, never straddling it.
@@ -1830,17 +1880,17 @@
   // gets it from the layer style, so all three agree and the sliders mean what
   // they say: the outer margin is the margin, and the gap between two panels is
   // the gutter, with no half a stroke eaten off either.
-  function paintPanel(c, knots) {
+  function paintPanel(c, knots, style) {
     var p = pathOf(knots);
-    c.fillStyle = state.fill;
+    c.fillStyle = style.fill;
     c.fill(p, 'nonzero');
-    if (state.sw > 0) {
+    if (style.sw > 0) {
       c.save();
       c.clip(p, 'nonzero');
       c.lineJoin = 'miter';
       c.miterLimit = 10;
-      c.lineWidth = state.sw * 2;
-      c.strokeStyle = state.stroke;
+      c.lineWidth = style.sw * 2;
+      c.strokeStyle = style.stroke;
       c.stroke(p);
       c.restore();
     }
@@ -1850,7 +1900,7 @@
   // page is never what the guides added to it.
   function paintPage(c) {
     view.panels.forEach(function (p) {
-      if (p.knots) paintPanel(c, p.knots);
+      if (p.knots) paintPanel(c, p.knots, p.style);
     });
   }
 
@@ -1858,7 +1908,8 @@
   // merge fused it - so there is no set to collapse and no border to hide.
   function buildPanels() {
     var panels = orderedFaces().map(function (f) {
-      return { ids: [f.id], face: f, poly: facePoly(mesh, f), merged: !!f.joined };
+      return { ids: [f.id], face: f, poly: facePoly(mesh, f), merged: !!f.joined,
+               style: styleOf(f) };
     });
     return { panels: panels, cuts: borderRuns(mesh) };
   }
@@ -1868,7 +1919,7 @@
     var built = buildPanels();
     view.panels = built.panels;
     view.cuts = built.cuts;
-    view.panels.forEach(function (p) { p.knots = panelKnots(p.poly); });
+    view.panels.forEach(function (p) { p.knots = panelKnots(p.poly, p.style); });
 
     var doc = docSize();
     if (canvas.width !== doc.w || canvas.height !== doc.h) {
@@ -1904,6 +1955,7 @@
                        (joined ? ' · 합친 칸 ' + joined + '개' : '') +
                        (lost ? ' · ' + lost + '칸은 간격에 눌려 사라졌습니다' : '');
     undoBtn.disabled = !history.length;
+    showPicked();
   }
 
   // The reference thumbnail, under everything. Called only from render(), never
@@ -1947,33 +1999,21 @@
       c.restore();
     }
 
-    // While a panel is selected for merging, the page stops offering to cut and
-    // starts answering one question instead: can this one join it?
-    if (selected !== null) {
-      var held = panelWithId(selected);
-      if (held) {
-        c.save();
-        c.fillStyle = 'rgba(239,78,35,0.20)';
-        c.fill(polyPath(held.poly));
-        c.strokeStyle = '#ef4e23';
-        c.lineWidth = 3 * s;
-        c.setLineDash([12 * s, 8 * s]);
-        c.stroke(polyPath(held.poly));
-        c.restore();
-      }
-      if (hover.panel && held && hover.panel !== held) {
-        var fits = canMerge(selected, hover.panel);
-        c.save();
-        c.fillStyle = fits ? 'rgba(126,184,176,0.30)' : 'rgba(140,140,140,0.20)';
-        c.fill(polyPath(hover.panel.poly));
-        if (fits) {
-          c.strokeStyle = '#7eb8b0';
-          c.lineWidth = 3 * s;
-          c.stroke(polyPath(hover.panel.poly));
-        }
-        c.restore();
-      }
-    } else if (hover.panel && !drag) {
+    // What the hand has picked out, marked so it stays obvious while everything
+    // else - cutting, dragging borders - carries on around it.
+    view.panels.forEach(function (pn) {
+      if (picked.indexOf(pn.ids[0]) < 0) return;
+      c.save();
+      c.fillStyle = 'rgba(239,78,35,0.18)';
+      c.fill(polyPath(pn.poly));
+      c.strokeStyle = '#ef4e23';
+      c.lineWidth = 3 * s;
+      c.setLineDash([12 * s, 8 * s]);
+      c.stroke(polyPath(pn.poly));
+      c.restore();
+    });
+
+    if (hover.panel && !drag) {
       c.save();
       c.fillStyle = 'rgba(126,184,176,0.16)';
       c.fill(polyPath(hover.panel.poly));
@@ -2510,17 +2550,6 @@
     mesh.faces.forEach(function (f, i) { if (from[i]) f.vs = from[i].slice(); });
   }
 
-  // Would these two make one straight-sided panel? Asked of the regions as they
-  // are now, so it stays true after cuts have been dragged around.
-  // Asked of a throwaway copy, so the answer is the one the real merge would
-  // give rather than a second opinion about it.
-  function canMerge(id, target) {
-    if (!target || target.ids.indexOf(id) >= 0) return false;
-    var held = panelWithId(id);
-    if (!held) return false;
-    return !!fuseFaces(cloneMesh(mesh), [held.ids[0], target.ids[0]]);
-  }
-
   canvas.addEventListener('mousemove', function (e) {
     var p = toPage(e);
     hover.x = p[0]; hover.y = p[1]; hover.alt = e.altKey;
@@ -2551,20 +2580,16 @@
       return;
     }
 
-    // holding a panel for merging suspends the border handles - one gesture at a
-    // time, or the same click means two things
-    var bi = selected === null ? badgeAt(p[0], p[1]) : null;
-    var vi = selected === null && bi === null ? handleAt(p[0], p[1]) : null;
-    var cu = selected === null && bi === null && vi === null ? cutAt(p[0], p[1]) : null;
+    var bi = badgeAt(p[0], p[1]);
+    var vi = bi === null ? handleAt(p[0], p[1]) : null;
+    var cu = bi === null && vi === null ? cutAt(p[0], p[1]) : null;
     var pn = (cu || vi !== null) ? null : panelAt(p[0], p[1]);
     var changed = cu !== hover.cut || pn !== hover.panel || vi !== hover.vertex || bi !== hover.badge;
     hover.cut = cu;
     hover.panel = pn;
     hover.vertex = vi;
     hover.badge = bi;
-    if (selected !== null) {
-      canvas.style.cursor = pn ? (canMerge(selected, pn) ? 'pointer' : 'not-allowed') : 'default';
-    } else if (bi !== null) {
+    if (bi !== null) {
       canvas.style.cursor = 'grab';
     } else if (vi !== null) {
       canvas.style.cursor = 'move';
@@ -2583,7 +2608,7 @@
   });
 
   canvas.addEventListener('mousedown', function (e) {
-    if (e.button !== 0 || selected !== null) return;
+    if (e.button !== 0) return;
     trackTip(e);
     var p = toPage(e);
     // a number badge sits inside a panel, where a click would otherwise cut it
@@ -2698,72 +2723,105 @@
     render();
   });
 
+  // The left button picks panels out; the right one cuts them. Picking is what
+  // says which panels a merge is about and which ones a shape setting applies
+  // to, so it stays put while everything else carries on working.
   canvas.addEventListener('click', function (e) {
     if (drag) return;
     if (swallowClick) { swallowClick = false; return; }
     var p = toPage(e);
-    var pn = panelAt(p[0], p[1]);
 
-    // Merging is a right-click gesture from start to finish, so a left click
-    // while a panel is selected means the other thing - backing out of it.
-    if (selected !== null) {
-      selected = null;
+    // that press was a drag, not a pick
+    if (handleAt(p[0], p[1]) !== null || cutAt(p[0], p[1])) return;
+    var pn = panelAt(p[0], p[1]);
+    if (!pn) {
+      if (!picked.length) return;
+      picked = [];
       render();
-      say('선택을 취소했습니다.');
+      say('선택을 풀었습니다.');
       return;
     }
+    togglePick(pn.ids[0]);
+  });
 
-    // that press was a drag, not a cut
+  canvas.addEventListener('contextmenu', function (e) {
+    e.preventDefault();
+    var p = toPage(e);
     if (handleAt(p[0], p[1]) !== null || cutAt(p[0], p[1])) return;
+    var pn = panelAt(p[0], p[1]);
     if (!pn) return;
     splitPanel(pn, p[0], p[1], e.altKey ? (state.dir === 'h' ? 'v' : 'h') : state.dir, e.shiftKey);
   });
 
-  // The whole merge happens on this button: one right-click selects a panel,
-  // the next says what to join it to. Nothing is destroyed by a single gesture,
-  // and the left button is never part of it.
-  canvas.addEventListener('contextmenu', function (e) {
-    e.preventDefault();
-    var p = toPage(e);
-    var pn = panelAt(p[0], p[1]);
-
-    if (selected !== null) {
-      if (pn) doMerge(pn);
-      else { selected = null; render(); say('선택을 취소했습니다.'); }
-      return;
-    }
-
-    if (!pn) return;
-    selected = pn.ids[0];
-    hover.cut = null;
+  function togglePick(id) {
+    var at = picked.indexOf(id);
+    if (at >= 0) picked.splice(at, 1);
+    else picked.push(id);
+    showPicked();
     render();
-    say('합칠 칸을 하나 더 오른쪽 클릭하세요. 초록으로 물드는 칸만 됩니다 — Esc로 취소.');
-  });
+    say(picked.length ? pickedWord() : '선택을 풀었습니다.');
+  }
 
-  function doMerge(target) {
-    var held = panelWithId(selected);
-    if (!held) { selected = null; render(); return; }
-    if (target === held) {
-      selected = null;
-      render();
-      say('같은 칸입니다. 선택을 취소했습니다.');
-      return;
-    }
-    if (!canMerge(selected, target)) {
-      say('이 둘은 합칠 수 없습니다 — 서로 변을 맞대고 있어야 하고, 가운데를 비워 감쌀 수는 없습니다.');
-      return;                               // keep the selection, let them retry
-    }
+  function pickedWord() {
+    if (picked.length === 1) return '칸 하나를 골랐습니다 — 칸 모양을 바꾸면 이 칸에만 걸립니다.';
+    return '칸 ' + picked.length + '개를 골랐습니다 — 합치거나, 칸 모양을 한꺼번에 바꿀 수 있습니다.';
+  }
+
+  // A cut or a merge can take a picked panel away, so the list is trimmed to
+  // what still exists every time the page is drawn. The button says what it can
+  // do before it is pressed: a merge that would not hold is refused here rather
+  // than after the fact.
+  function showPicked() {
+    picked = livePicked();
+    pickedOut.textContent = picked.length ? '고른 칸 ' + picked.length + '개' : '';
+    mergeBtn.disabled = picked.length < 2 || !fuseFaces(cloneMesh(mesh), picked);
+    mergeBtn.title = picked.length < 2 ? '칸을 둘 이상 골라주세요'
+      : (mergeBtn.disabled ? '이 칸들은 한 덩어리가 되지 않습니다' : '');
+    showStyle();
+  }
+
+  // The shape controls show what they are about to change: the picked panels'
+  // own settings while any are picked, the page's otherwise. Where the picked
+  // panels disagree the page value is shown, since that is what pressing the
+  // control would give all of them.
+  function showStyle() {
+    var faces = picked.map(function (id) { return faceById(mesh, id); }).filter(Boolean);
+    var head = document.getElementById('shape-scope');
+    head.textContent = faces.length
+      ? (faces.length === 1 ? '— 고른 칸 하나에만' : '— 고른 칸 ' + faces.length + '개에만')
+      : '';
+    STYLE_KEYS.forEach(function (k) {
+      var vals = faces.map(function (f) { return styleOf(f)[k]; });
+      var same = vals.length && vals.every(function (v) { return v === vals[0]; });
+      var v = faces.length ? (same ? vals[0] : state[k]) : state[k];
+      var el = document.getElementById(k);
+      if (!el) return;
+      el.value = v;
+      var out = document.getElementById(k + 'v');
+      if (out) out.textContent = v;
+    });
+  }
+
+  // Only what is still there: a merge or a cut can take a picked panel away.
+  function livePicked() {
+    return picked.filter(function (id) { return !!faceById(mesh, id); });
+  }
+
+  function doMerge() {
+    var ids = livePicked();
+    if (ids.length < 2) return;
     var probe = cloneMesh(mesh);
-    if (!fuseFaces(probe, [held.ids[0], target.ids[0]])) {
-      say('이 둘은 합칠 수 없습니다 — 서로 변을 맞대고 있어야 하고, 가운데를 비워 감쌀 수는 없습니다.');
+    if (!fuseFaces(probe, ids)) {
+      say('이 칸들은 합칠 수 없습니다 — 서로 변을 맞대 한 덩어리가 되어야 하고, 가운데를 비워 감쌀 수는 없습니다.');
       return;
     }
     push();
     mesh = probe;
-    selected = null;
+    picked = [ids[0]];               // the merged panel keeps the first one's id
     forgetHover();
+    showPicked();
     render();
-    say('두 칸을 하나로 합쳤습니다.');
+    say('칸 ' + ids.length + '개를 하나로 합쳤습니다.');
   }
 
   function splitPanel(entry, x, y, dir, free) {
@@ -2808,10 +2866,11 @@
       undo();
       return;
     }
-    if (e.key === 'Escape' && selected !== null) {
-      selected = null;
+    if (e.key === 'Escape' && picked.length) {
+      picked = [];
+      showPicked();
       render();
-      say('선택을 취소했습니다.');
+      say('선택을 풀었습니다.');
     }
   });
 
@@ -2852,6 +2911,7 @@
       faces: mesh.faces.map(function (f) {
         var e = { id: f.id, vs: f.vs.slice() };
         if (f.joined) e.joined = true;
+        if (f.style && Object.keys(f.style).length) e.style = f.style;
         return e;
       }),
       page: { x: round4(mesh.page.x), y: round4(mesh.page.y),
@@ -2893,6 +2953,17 @@
           throw new Error('칸이 없는 꼭짓점을 가리킵니다');
         }
       });
+      if (e.style !== undefined) {
+        if (!e.style || typeof e.style !== 'object') throw new Error('칸 모양이 깨졌습니다');
+        Object.keys(e.style).forEach(function (k) {
+          if (STYLE_KEYS.indexOf(k) < 0) throw new Error('모르는 칸 모양 항목: ' + k);
+          var v = e.style[k];
+          var okv = (k === 'fill' || k === 'stroke')
+            ? (typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v))
+            : (num(v) && v >= 0);
+          if (!okv) throw new Error('칸 모양 값이 깨졌습니다: ' + k);
+        });
+      }
     });
     if (f.order && !Array.isArray(f.order)) throw new Error('읽는 순서가 깨졌습니다');
     return f;
@@ -2908,14 +2979,16 @@
     mesh = {
       verts: f.mesh.verts.map(function (p) { return [p[0], p[1]]; }),
       faces: f.mesh.faces.map(function (e) {
-        return { id: e.id, vs: e.vs.slice(), joined: !!e.joined };
+        var out = { id: e.id, vs: e.vs.slice(), joined: !!e.joined };
+        if (e.style) out.style = JSON.parse(JSON.stringify(e.style));
+        return out;
       }),
       page: { x: f.mesh.page.x, y: f.mesh.page.y, w: f.mesh.page.w, h: f.mesh.page.h }
     };
     // New cuts must not hand out an id the file is already using
     mesh.faces.forEach(function (fc) { if (fc.id >= nextFaceId) nextFaceId = fc.id + 1; });
     order = f.order ? f.order.slice() : null;
-    selected = null;
+    picked = [];
     forgetHover();
     showControls();
     render();
@@ -3031,7 +3104,7 @@
         paper.width = lw;
         paper.height = lh;
         var pctx = paper.getContext('2d');
-        pctx.fillStyle = state.fill;
+        pctx.fillStyle = l.style.fill;
         pctx.fillRect(0, 0, lw, lh);
 
         var blank = document.createElement('canvas');
@@ -3054,7 +3127,7 @@
 
         // Inside alignment, not centre: the mask would eat the outer half of a
         // centred stroke and the border would come out half as thick.
-        if (state.sw > 0) {
+        if (l.style.sw > 0) {
           folder.effects = {
             stroke: [{
               enabled: true,
@@ -3062,8 +3135,8 @@
               fillType: 'color',
               blendMode: 'normal',
               opacity: 1,
-              size: { units: 'Pixels', value: state.sw },
-              color: hexToRgb(state.stroke)
+              size: { units: 'Pixels', value: l.style.sw },
+              color: hexToRgb(l.style.stroke)
             }]
           };
         }
@@ -3108,11 +3181,11 @@
     var defs = [], body = [];
     view.panels.filter(function (l) { return l.knots; }).forEach(function (l, i) {
       var d = pathToSVG(l.knots), id = i + 1;
-      body.push('  <path id="panel-' + id + '" d="' + d + '" fill="' + state.fill + '"/>');
-      if (state.sw > 0) {
+      body.push('  <path id="panel-' + id + '" d="' + d + '" fill="' + l.style.fill + '"/>');
+      if (l.style.sw > 0) {
         defs.push('    <clipPath id="panel-clip-' + id + '"><path d="' + d + '"/></clipPath>');
-        body.push('  <path d="' + d + '" fill="none" stroke="' + state.stroke +
-                  '" stroke-width="' + (state.sw * 2) + '" stroke-linejoin="miter"' +
+        body.push('  <path d="' + d + '" fill="none" stroke="' + l.style.stroke +
+                  '" stroke-width="' + (l.style.sw * 2) + '" stroke-linejoin="miter"' +
                   ' stroke-miterlimit="10" clip-path="url(#panel-clip-' + id + ')"/>');
       }
     });
@@ -3252,6 +3325,7 @@
   }
 
   chips(printHost, PRINT_PAGES, function (e) {
+    push();
     state.unit = 'mm';
     state.mmW = e[1];
     state.mmH = e[2];
@@ -3273,6 +3347,7 @@
     // makes the numbers depend on the route taken rather than on where they
     // ended up, and they shrink a little more on every visit. Better to leave
     // them alone and let the slider say what it says.
+    push();
     state.unit = 'px';
     state.w = e[1];
     state.h = e[2];
@@ -3284,13 +3359,14 @@
     render();
   }, -1);
 
-  chips(dpiHost, DPIS, function (e) { setDpi(e[1]); }, 0);
+  chips(dpiHost, DPIS, function (e) { push(); setDpi(e[1]); }, 0);
 
   // Switching by hand keeps the page the same size on screen and only changes
   // which number you steer it with. Going back to mm needs a print resolution to
   // measure against, so it picks one up rather than keeping the screen's 72.
   chips(unitHost, [['mm', 'mm'], ['px', 'px']], function (e) {
     if (e[1] === state.unit) return;
+    push();
     if (e[1] === 'px') {
       state.unit = 'px';
       press(printHost, null);
@@ -3313,6 +3389,7 @@
   }, 0);
 
   chips(document.getElementById('orders'), [['우 → 좌', true], ['좌 → 우', false]], function (e) {
+    push();
     state.rtl = e[1];
     render();
   }, 1);      // 좌 → 우
@@ -3321,10 +3398,13 @@
   // through the radio-style chips helper above
   var numbersBtn = document.getElementById('numbers');
   numbersBtn.addEventListener('click', function () {
+    push();
     state.numbers = !state.numbers;
     numbersBtn.setAttribute('aria-pressed', String(state.numbers));
     render();
   });
+
+  mergeBtn.addEventListener('click', doMerge);
 
   var orderReset = document.getElementById('order-reset');
   orderReset.addEventListener('click', function () {
@@ -3334,14 +3414,46 @@
     say('읽는 순서를 자동으로 되돌렸습니다.');
   });
 
+  // A slider being dragged fires input on every pixel of travel. Recording each
+  // one would fill the sixty steps of history with a single drag and push out
+  // the cut or the merge that came before it - so the page as it stood when the
+  // hand took hold is put aside, and only committed when the hand lets go.
+  var beforeDrag = null;
+
+  function holdForUndo() {
+    if (!beforeDrag) beforeDrag = snapshot();
+  }
+
+  // Dragging a slider out and back again leaves the page where it was found,
+  // and a step that undoes nothing is worse than no step at all.
+  function letGo() {
+    if (!beforeDrag) return;
+    var rec = beforeDrag;
+    beforeDrag = null;
+    // The page's own settings live in state; a panel's live on the panel, so
+    // both have to be asked before deciding nothing happened.
+    var moved = Object.keys(state).some(function (k) { return state[k] !== rec.state[k]; }) ||
+                styleSig(mesh) !== styleSig(rec.mesh);
+    if (moved) keep(rec);
+  }
+
+  function styleSig(m) {
+    return m.faces.map(function (f) {
+      return f.id + ':' + (f.style ? JSON.stringify(f.style) : '');
+    }).join('|');
+  }
+
   var slider = {};
   ['w', 'h', 'bleed', 'mt', 'mb', 'ml', 'mr', 'gutter', 'sw', 'radius', 'count', 'dyn'].forEach(function (id) {
     var el = document.getElementById(id);
     slider[id] = el;
     var out = document.getElementById(id + 'v');
+    // change comes when the drag ends, whether by mouse or by arrow key
+    el.addEventListener('change', letGo);
     el.addEventListener('input', function () {
       var v = parseInt(el.value, 10);
       out.textContent = el.value;
+      holdForUndo();
       if (id === 'count' || id === 'dyn') { state[id] = v; regenerate(); return; }
       if (id === 'w' || id === 'h') {
         // in mm the slider sets the physical size and the pixels follow
@@ -3350,6 +3462,8 @@
         // no preset matches a size typed by hand
         press(printHost, null);
         press(screenHost, null);
+      } else if (STYLE_KEYS.indexOf(id) >= 0 && picked.length) {
+        setPickedStyle(id, v);
       } else {
         state[id] = v;
       }
@@ -3358,15 +3472,38 @@
     });
   });
 
+  // With panels picked out, the shape controls speak to those panels; with none
+  // picked they speak to the page, as they always did. Setting a panel back to
+  // what the page says drops the override rather than freezing today's page
+  // value into it - so a panel only differs where it was asked to.
+  function setPickedStyle(key, v) {
+    var ids = livePicked();
+    if (!ids.length) { state[key] = v; return; }
+    // No undo step, the same as every other slider here: one would be pushed
+    // per pixel of the drag and the history would be nothing else.
+    ids.forEach(function (id) {
+      var f = faceById(mesh, id);
+      if (!f) return;
+      if (v === state[key]) {
+        if (f.style) delete f.style[key];
+        if (f.style && !Object.keys(f.style).length) delete f.style;
+        return;
+      }
+      f.style = f.style || {};
+      f.style[key] = v;
+    });
+  }
+
   // Reaching for the auto controls replaces whatever is on the page, so it goes
   // on the history stack like any other change.
   function regenerate() {
-    replaceMesh(autoMesh(state.count, state.dyn, state.seed, pageRect()));
+    setMesh(autoMesh(state.count, state.dyn, state.seed, pageRect()));
     press(presetHost, null);
     render();
   }
 
   document.getElementById('reseed').addEventListener('click', function () {
+    push();
     state.seed = (Math.random() * 0x7fffffff) | 0;
     regenerate();
     say('');
@@ -3379,8 +3516,13 @@
   undoBtn.addEventListener('click', undo);
 
   ['fill', 'stroke'].forEach(function (id) {
-    document.getElementById(id).addEventListener('input', function (e) {
-      state[id] = e.target.value;
+    var el = document.getElementById(id);
+    // a colour picker streams input while it is open, and change when it closes
+    el.addEventListener('change', letGo);
+    el.addEventListener('input', function (e) {
+      holdForUndo();
+      if (picked.length) setPickedStyle(id, e.target.value);
+      else state[id] = e.target.value;
       render();
     });
   });
