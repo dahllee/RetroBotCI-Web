@@ -1878,10 +1878,16 @@
       c.setLineDash([14 * s, 9 * s]);
       c.beginPath();
       if (view.snap.point) {
-        c.moveTo(r.x, view.snap.point[1]);
-        c.lineTo(r.x + r.w, view.snap.point[1]);
-        c.moveTo(view.snap.point[0], r.y);
-        c.lineTo(view.snap.point[0], r.y + r.h);
+        // one line per coordinate that actually caught - drawing the other one
+        // anyway puts a guide through a place nothing snapped to
+        if (view.snap.point[1] !== null) {
+          c.moveTo(r.x, view.snap.point[1]);
+          c.lineTo(r.x + r.w, view.snap.point[1]);
+        }
+        if (view.snap.point[0] !== null) {
+          c.moveTo(view.snap.point[0], r.y);
+          c.lineTo(view.snap.point[0], r.y + r.h);
+        }
       } else if (view.snap.axis) {
         c.moveTo(r.x, view.snap.at);
         c.lineTo(r.x + r.w, view.snap.at);
@@ -2186,14 +2192,26 @@
     var pv = drag.from[drag.pivot];
     view.snap = null;
     if (!free) {
-      // the pivot's own coordinate is in the list, so a border can be put back
-      // straight as easily as it was tilted
-      var targets = snapTargets(drag.axis, drag.run).concat([pv[drag.axis]]);
-      var want = at[drag.axis];
-      var got = snapValue(want, targets, SNAP_REACH * viewScale());
-      if (got !== want) {
-        view.snap = { axis: drag.axis, at: got };
-        at = drag.axis ? [at[0], got] : [got, at[1]];
+      // Both coordinates, not just the one the turning border runs along. The
+      // corner being dragged is usually the end of one border and a point on
+      // another crossing it, and moving it turns the first while bending the
+      // second - so the sideways travel is every bit as worth lining up as the
+      // along-the-border travel. Snapping only the border's own axis left the
+      // direction the hand was actually moving in with nothing to catch on.
+      //
+      // The pivot's own coordinate goes in on the border's axis, so a border
+      // can be put back straight as easily as it was tilted.
+      var reach = SNAP_REACH * viewScale();
+      var want = [at[0], at[1]], got = [at[0], at[1]];
+      for (var ax = 0; ax < 2; ax++) {
+        var targets = snapTargets(ax, drag.run);
+        if (ax === drag.axis) targets = targets.concat([pv[ax]]);
+        got[ax] = snapValue(want[ax], targets, reach);
+      }
+      if (got[0] !== want[0] || got[1] !== want[1]) {
+        view.snap = { point: [got[0] !== want[0] ? got[0] : null,
+                              got[1] !== want[1] ? got[1] : null] };
+        at = got;
       }
     }
     moveVert(mesh, drag.vertex, at);
@@ -2203,9 +2221,19 @@
     var d = [dx / L, dy / L];
     drag.run.list.forEach(function (vi) {
       if (vi === drag.pivot || vi === drag.vertex) return;
-      var cross = drag.cross[vi];
-      var to = cross ? lineCross(pv, d, drag.from[vi], cross) : null;
-      if (to) moveVert(mesh, vi, to);
+      var o = drag.from[vi], cross = drag.cross[vi];
+      var to = cross ? lineCross(pv, d, o, cross) : null;
+      if (!to) {
+        // Nothing crosses here to slide along, so nothing holds this corner to
+        // a particular place - it is where two borders of the same line meet
+        // end to end, and it may sit anywhere along it. Leaving it behind is
+        // what bent the border into a zigzag, so put it on the new line at the
+        // nearest point instead. A tilted border staying straight is the whole
+        // of what this gesture promises.
+        var t = (o[0] - pv[0]) * d[0] + (o[1] - pv[1]) * d[1];
+        to = [pv[0] + d[0] * t, pv[1] + d[1] * t];
+      }
+      moveVert(mesh, vi, to);
     });
   }
 
@@ -2244,7 +2272,9 @@
       ys.push(v[1]);
     });
     var x = snapValue(p[0], xs, reach), y = snapValue(p[1], ys, reach);
-    if (x !== p[0] || y !== p[1]) view.snap = { point: [x, y] };
+    if (x !== p[0] || y !== p[1]) {
+      view.snap = { point: [x !== p[0] ? x : null, y !== p[1] ? y : null] };
+    }
     return [x, y];
   }
 
