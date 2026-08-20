@@ -591,7 +591,10 @@
       <p class="note">
         <strong>PSD</strong>는 칸마다 폴더 하나로 나옵니다. 폴더에 벡터 마스크가 걸려 있어 안의 <strong>그림</strong> 레이어에 그리면 칸 모양대로 잘리고,
         테두리는 그 폴더의 레이어 스타일이라 포토샵에서 마스크 모서리를 옮기면 같이 따라옵니다. 고칠 패스가 한 벌뿐입니다.
+        맨 아래에는 도련까지 덮는 <strong>페이지 바탕</strong> 레이어가 깔립니다 — 인쇄로 넘길 흰 종이이자,
+        칸을 지우고 가장자리까지 가득 채울 그림을 그릴 자리입니다. 어떤 마스크도 걸려 있지 않습니다.
         칸 번호와 참고 이미지는 화면에서만 쓰는 것이라 어떤 파일에도 들어가지 않고, 순서는 대신 폴더 이름이 가집니다.
+        PNG와 SVG는 칸 사이가 투명한 채로 나갑니다.
       </p>
     </div>
   </div>
@@ -2967,14 +2970,43 @@
     return c;
   }
 
+  // The paper the whole page is printed on, bleed and all. Everything else in
+  // the file leaves the gutters transparent, which is right on screen and wrong
+  // on press - there is no such thing as a transparent sheet of paper. It sits
+  // at the bottom of the stack, under every panel, so anything meant to run to
+  // the edge of the page has a layer to be drawn on that no mask will crop.
+  function pageGround(doc) {
+    var c = document.createElement('canvas');
+    c.width = doc.w;
+    c.height = doc.h;
+    var g = c.getContext('2d');
+    g.fillStyle = state.fill;
+    g.fillRect(0, 0, doc.w, doc.h);
+    return {
+      name: '페이지 바탕',
+      top: 0, left: 0, bottom: doc.h, right: doc.w,
+      imageData: g.getImageData(0, 0, doc.w, doc.h)
+    };
+  }
+
   document.getElementById('dl-psd').addEventListener('click', function () {
     try {
       var drawn = view.panels.filter(function (l) { return l.knots; });
       if (!drawn.length) { say('그릴 칸이 없습니다.'); return; }
 
       var doc = docSize();
-      var flat = cleanCanvas();
-      var flatData = flat.getContext('2d').getImageData(0, 0, doc.w, doc.h);
+      // The composite is what Photoshop shows before it renders the layers, so
+      // it is built the way the layers stack: paper first, panels on top. The
+      // PNG and the SVG are left transparent between the panels, which is what
+      // they are wanted for.
+      var flat = document.createElement('canvas');
+      flat.width = doc.w;
+      flat.height = doc.h;
+      var fctx = flat.getContext('2d');
+      fctx.fillStyle = state.fill;
+      fctx.fillRect(0, 0, doc.w, doc.h);
+      paintPage(fctx);
+      var flatData = fctx.getImageData(0, 0, doc.w, doc.h);
 
       // Each panel becomes a FOLDER carrying the vector mask, with the border as
       // a layer style on that same folder. The point is that there is only ever
@@ -3060,10 +3092,11 @@
             guides: trimGuides()
           }
         },
-        children: folders.reverse()
+        // the paper goes in first, which puts it under everything
+        children: [pageGround(doc)].concat(folders.reverse())
       };
       save(new Blob([window.agPsd.writePsd(psd)], { type: 'image/vnd.adobe.photoshop' }), filename('psd'));
-      say('PSD 저장 완료 — 칸마다 폴더 하나씩, 안에 바탕과 그림 레이어가 들어 있습니다.');
+      say('PSD 저장 완료 — 맨 아래 페이지 바탕, 그 위로 칸마다 폴더 하나씩입니다.');
     } catch (err) {
       say('PSD 생성 실패: ' + err.message);
     }
