@@ -2183,6 +2183,45 @@
     return [p[0] + d[0] * t, p[1] + d[1] * t];
   }
 
+  // Every stretch of border that runs through this corner, cut in two at it.
+  // Moving the corner is allowed to bend the borders there - that is the whole
+  // gesture - but only there: each half stays the straight line it was, pinned
+  // at its far end. Without this the corner next along, which the border used
+  // to run straight through, silently became a bend of its own.
+  //
+  // Each half carries the far end it turns about and the crossing line every
+  // corner along it has to keep to, both read now rather than during the drag,
+  // when the mesh has already been pulled about.
+  function sidesAt(vi) {
+    var out = [];
+    view.cuts.forEach(function (run) {
+      if (run.list.indexOf(vi) < 0) return;
+      var here = mesh.verts[vi];
+      var near = [], far = [];
+      run.list.forEach(function (k) {
+        if (k === vi) return;
+        var p = mesh.verts[k];
+        // which way along the border it lies from the corner being moved
+        var along = (p[0] - here[0]) * run.dir[0] + (p[1] - here[1]) * run.dir[1];
+        (along < 0 ? near : far).push(k);
+      });
+      var cross = {};
+      run.list.forEach(function (k) { cross[k] = crossingDir(k, run.dir); });
+      [near, far].forEach(function (group) {
+        if (!group.length) return;
+        // the far end of this half is the one furthest from the corner
+        var anchor = group[0], best = -1;
+        group.forEach(function (k) {
+          var p = mesh.verts[k];
+          var d = Math.hypot(p[0] - here[0], p[1] - here[1]);
+          if (d > best) { best = d; anchor = k; }
+        });
+        out.push({ list: group, anchor: anchor, cross: cross });
+      });
+    });
+    return out;
+  }
+
   // Dragging the end of a border turns the whole thing about its other end. The
   // corners along the way are put back on the new line where their own crossing
   // line meets it, so the border stays straight and nothing it crosses bends.
@@ -2215,25 +2254,52 @@
       }
     }
     moveVert(mesh, drag.vertex, at);
-    var end = mesh.verts[drag.vertex];
-    var dx = end[0] - pv[0], dy = end[1] - pv[1], L = Math.hypot(dx, dy);
+    applySides(drag);
+  }
+
+  // Move one corner and bend the borders meeting there - but only there.
+  function moveVertex(drag, at, free) {
+    moveVert(mesh, drag.vertex, snapLoose(drag.vertex, at, free));
+    applySides(drag);
+  }
+
+  // Every stretch of border running through the corner is laid back down
+  // straight, from its own far end to wherever the corner has got to. The
+  // border being turned is one of these - the corner is an end of it, so it has
+  // just the one stretch, anchored at the other end - which is why turning a
+  // border and bending a corner are the same job here.
+  function applySides(drag) {
+    var now = mesh.verts[drag.vertex];
+    (drag.sides || []).forEach(function (side) {
+      straighten(side.list, drag.from[side.anchor], now, drag.from, side.cross,
+                 [side.anchor, drag.vertex]);
+    });
+  }
+
+  // Lay a stretch of border back down as one straight line between `from` and
+  // `to`, sliding each corner along the way down whatever crosses it there.
+  // Every corner in `list` is one the border used to run straight through - a
+  // border only ever groups segments that are already in line - so putting them
+  // back on the line is keeping them as they were, not straightening something
+  // the page had deliberately bent.
+  function straighten(list, from, to, was, cross, skip) {
+    var dx = to[0] - from[0], dy = to[1] - from[1], L = Math.hypot(dx, dy);
     if (L < 1e-6) return;
     var d = [dx / L, dy / L];
-    drag.run.list.forEach(function (vi) {
-      if (vi === drag.pivot || vi === drag.vertex) return;
-      var o = drag.from[vi], cross = drag.cross[vi];
-      var to = cross ? lineCross(pv, d, o, cross) : null;
-      if (!to) {
+    list.forEach(function (vi) {
+      if (skip.indexOf(vi) >= 0) return;
+      var o = was[vi], c = cross[vi];
+      var at = c ? lineCross(from, d, o, c) : null;
+      if (!at) {
         // Nothing crosses here to slide along, so nothing holds this corner to
         // a particular place - it is where two borders of the same line meet
         // end to end, and it may sit anywhere along it. Leaving it behind is
-        // what bent the border into a zigzag, so put it on the new line at the
-        // nearest point instead. A tilted border staying straight is the whole
-        // of what this gesture promises.
-        var t = (o[0] - pv[0]) * d[0] + (o[1] - pv[1]) * d[1];
-        to = [pv[0] + d[0] * t, pv[1] + d[1] * t];
+        // what bends the border into a zigzag, so put it on the new line at the
+        // nearest point instead.
+        var t = (o[0] - from[0]) * d[0] + (o[1] - from[1]) * d[1];
+        at = [from[0] + d[0] * t, from[1] + d[1] * t];
       }
-      moveVert(mesh, vi, to);
+      moveVert(mesh, vi, at);
     });
   }
 
@@ -2334,7 +2400,7 @@
       // positions already were, and the loops have to be as well.
       if (drag.loops) restoreLoops(drag.loops);
       if (drag.pivot !== undefined) pivotRun(drag, p, e.shiftKey);
-      else if (drag.vertex !== undefined) moveVert(mesh, drag.vertex, snapLoose(drag.vertex, p, e.shiftKey));
+      else if (drag.vertex !== undefined) moveVertex(drag, p, e.shiftKey);
       else slideRun(drag, p[0] - drag.start[0], p[1] - drag.start[1], e.shiftKey);
       // a vertex may have come to rest on a face it was not part of
       repairMesh(mesh);
@@ -2423,11 +2489,15 @@
         run.list.forEach(function (k) { cross[k] = crossingDir(k, run.dir); });
         drag = {
           vertex: vi, run: run, pivot: ends.i === vi ? ends.j : ends.i,
-          from: vertsSnapshot(), loops: loopsSnapshot(), cross: cross, axis: runAxis(run)
+          from: vertsSnapshot(), loops: loopsSnapshot(), cross: cross, axis: runAxis(run),
+          sides: sidesAt(vi)
         };
         say('경계선을 기울이는 중 — 반대쪽 끝을 축으로 돕니다.');
       } else {
-        drag = { vertex: vi, from: vertsSnapshot(), loops: loopsSnapshot() };
+        drag = {
+          vertex: vi, from: vertsSnapshot(), loops: loopsSnapshot(),
+          sides: sidesAt(vi)
+        };
         say('꼭짓점을 옮기는 중 — 여기 모인 선들이 따라 꺾입니다.');
       }
       return;
