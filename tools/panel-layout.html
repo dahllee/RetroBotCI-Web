@@ -558,6 +558,7 @@
         <span class="hint-sm" id="pickedv"></span>
         <button class="btn btn-ghost btn-sm" id="merge" disabled>합치기</button>
         <button class="btn btn-ghost btn-sm" id="undo" disabled>되돌리기</button>
+        <button class="btn btn-ghost btn-sm" id="redo" disabled>다시하기</button>
       </div>
       <div class="canvas-wrap"><canvas id="preview"></canvas><div id="tip"></div></div>
       <p class="meta" id="meta"></p>
@@ -568,11 +569,13 @@
         <button class="btn btn-ghost" id="copy-png">PNG 복사</button>
       </div>
       <p class="note">
-        칸 안을 <strong>오른쪽 클릭</strong>하면 그 자리에서 갈라집니다. <kbd>Alt</kbd>를 누른 채면 반대 방향으로 갈라집니다.
+        칸 안을 <strong>오른쪽 클릭</strong>하면 그 자리에서 갈라집니다. 자를 방향은 <strong>가로·세로</strong>로 고르고,
+        <kbd>Alt</kbd>를 <strong>누르고 있는 동안</strong>은 반대 방향이 됩니다 — 누르면 칩과 미리보기 선이 바로 따라 바뀝니다.
         경계선을 <strong>드래그</strong>하면 그 선이 통째로 움직이고, 선이 만나는 <strong>꼭짓점</strong>을 드래그하면 거기 모인 선들이 기울어집니다.
         <kbd>Alt</kbd>를 누른 채 경계선을 끌면 <strong>잡은 조각만</strong> 떨어져 나와, 한 단만 옆으로 어긋난 배치를 만들 수 있습니다.
         선과 칸을 나눌 자리는 다른 경계선이나 페이지 한가운데, <strong>재단선</strong>에 <strong>달라붙습니다</strong> — 달라붙는 자리가 점선으로 표시되고, <kbd>Shift</kbd>를 누르면 붙지 않습니다.
-        <kbd>Ctrl</kbd>+<kbd>Z</kbd>로 되돌립니다. 슬라이더로 조절한 값도 되돌아가며, 드래그 한 번이 한 단계입니다.
+        <kbd>Ctrl</kbd>+<kbd>Z</kbd>로 되돌리고 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>로 다시 합니다.
+        슬라이더로 조절한 값도 되돌아가며, 드래그 한 번이 한 단계입니다.
       </p>
       <p class="note">
         주황 점선이 <strong>재단선</strong>입니다. 그 바깥이 <strong>도련</strong>이고, 종이는 재단선 언저리에서 잘립니다 —
@@ -1623,6 +1626,10 @@
   // staggered page can read in an order no rule about tiers will guess.
   var order = null;
   var history = [];
+  // Steps that have been undone, waiting to be done again. Doing anything new
+  // drops them: the page has taken a different turn and there is no way back
+  // onto the road that was abandoned.
+  var future = [];
 
   var canvas = document.getElementById('preview');
   var ctx = canvas.getContext('2d');
@@ -1630,6 +1637,7 @@
   var tip = document.getElementById('tip');
   var tipWrap = document.querySelector('.canvas-wrap');
   var undoBtn = document.getElementById('undo');
+  var redoBtn = document.getElementById('redo');
   var mergeBtn = document.getElementById('merge');
   var pickedOut = document.getElementById('pickedv');
 
@@ -1731,23 +1739,37 @@
   function keep(rec) {
     history.push(rec);
     if (history.length > 60) history.shift();
+    future.length = 0;
     undoBtn.disabled = false;
+    redoBtn.disabled = true;
   }
 
   // Merges live in the mesh itself, so a snapshot of the mesh is the whole of
   // the layout - undoing one is undoing the surgery that made it.
   function undo() {
     if (!history.length) return;
-    var was = history.pop();
-    mesh = was.mesh;
-    order = was.order;
-    if (was.state) Object.keys(was.state).forEach(function (k) { state[k] = was.state[k]; });
+    future.push(snapshot());              // where to come back to
+    if (future.length > 60) future.shift();
+    goTo(history.pop());
+    say('되돌렸습니다.');
+  }
+
+  function redo() {
+    if (!future.length) return;
+    history.push(snapshot());
+    goTo(future.pop());
+    say('다시 했습니다.');
+  }
+
+  function goTo(rec) {
+    mesh = rec.mesh;
+    order = rec.order;
+    if (rec.state) Object.keys(rec.state).forEach(function (k) { state[k] = rec.state[k]; });
     picked = [];
+    beforeDrag = null;                    // a slider gesture cannot span this
     forgetHover();
-    undoBtn.disabled = !history.length;
     showControls();
     render();
-    say('되돌렸습니다.');
   }
 
   function replaceMesh(next) {
@@ -1955,6 +1977,7 @@
                        (joined ? ' · 합친 칸 ' + joined + '개' : '') +
                        (lost ? ' · ' + lost + '칸은 간격에 눌려 사라졌습니다' : '');
     undoBtn.disabled = !history.length;
+    redoBtn.disabled = !future.length;
     showPicked();
   }
 
@@ -2552,7 +2575,10 @@
 
   canvas.addEventListener('mousemove', function (e) {
     var p = toPage(e);
-    hover.x = p[0]; hover.y = p[1]; hover.alt = e.altKey;
+    hover.x = p[0]; hover.y = p[1];
+    // the mouse knows about Alt too, and catches a press made before the page
+    // had the keyboard
+    if (hover.alt !== e.altKey) { hover.alt = e.altKey; showDir(); }
     trackTip(e);
 
     if (drag && drag.badge !== undefined) {
@@ -2863,7 +2889,13 @@
   window.addEventListener('keydown', function (e) {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
       e.preventDefault();
-      undo();
+      if (e.shiftKey) redo();
+      else undo();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+      e.preventDefault();
+      redo();
       return;
     }
     if (e.key === 'Escape' && picked.length) {
@@ -3006,8 +3038,7 @@
     press(printHost, state.unit === 'mm' && pi >= 0 ? printHost.children[pi] : null);
     press(screenHost, state.unit === 'px' && si >= 0 ? screenHost.children[si] : null);
     press(unitHost, unitHost.children[state.unit === 'mm' ? 0 : 1]);
-    var dirHost = document.getElementById('dirs');
-    press(dirHost, dirHost.children[state.dir === 'h' ? 0 : 1]);
+    showDir();
     var orderHost = document.getElementById('orders');
     press(orderHost, orderHost.children[state.rtl ? 0 : 1]);
     numbersBtn.setAttribute('aria-pressed', String(state.numbers));
@@ -3383,10 +3414,35 @@
     render();
   }, 0);
 
-  chips(document.getElementById('dirs'), [['위·아래', 'h'], ['좌·우', 'v']], function (e) {
+  // Named after the line the cut draws, not the halves it leaves behind: a
+  // 가로 cut is a horizontal line, which is the thing being placed.
+  var dirHost = document.getElementById('dirs');
+  chips(dirHost, [['가로', 'h'], ['세로', 'v']], function (e) {
     state.dir = e[1];
+    showDir();
     render();
   }, 0);
+
+  // Alt turns the cut the other way for as long as it is held. It always did,
+  // but only the next mouse move noticed - so holding it looked like nothing
+  // was happening until the hand twitched. Now the press itself repaints, and
+  // the chip moves across to say which way a cut would go if made right now.
+  function showDir() {
+    var flipped = hover.alt ? (state.dir === 'h' ? 'v' : 'h') : state.dir;
+    press(dirHost, dirHost.children[flipped === 'h' ? 0 : 1]);
+  }
+
+  function altHeld(down) {
+    if (hover.alt === down) return;
+    hover.alt = down;
+    showDir();
+    render();
+  }
+
+  window.addEventListener('keydown', function (e) { if (e.key === 'Alt') altHeld(true); });
+  window.addEventListener('keyup', function (e) { if (e.key === 'Alt') altHeld(false); });
+  // let go of it if the window does: no keyup arrives once focus has gone
+  window.addEventListener('blur', function () { altHeld(false); });
 
   chips(document.getElementById('orders'), [['우 → 좌', true], ['좌 → 우', false]], function (e) {
     push();
@@ -3514,6 +3570,7 @@
   // wrong.
 
   undoBtn.addEventListener('click', undo);
+  redoBtn.addEventListener('click', redo);
 
   ['fill', 'stroke'].forEach(function (id) {
     var el = document.getElementById(id);
