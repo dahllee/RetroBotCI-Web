@@ -114,6 +114,12 @@
       margin-bottom: 4px;
     }
     .field .val { color: #7eb8b0; font-weight: 500; letter-spacing: 0.04em; }
+    /* Labels are set in small caps, which is right for words and wrong for
+       units: MM and PX are not how anyone writes them. */
+    .u, .unit-label, .hint-sm { text-transform: none; }
+    /* its last field zeroes its own margin, which butts the next control
+       straight up against the button */
+    #ref-opts { margin-bottom: 24px; }
 
     /* A rule across the control column, naming the group under it. The auto
        layout controls are a different job from the page metrics above them. */
@@ -354,7 +360,7 @@
   <div class="intro">
     <p class="section-label">Tool</p>
     <h1 class="section-title">칸 나누기</h1>
-    <p>만화 페이지의 칸 배치를 짜서 벡터 셰이프 레이어가 든 PSD로 내려받습니다. 칸마다 레이어 하나씩, 읽는 순서대로 이름이 붙습니다. 포토샵에서 열면 직접 선택 도구로 모서리를 그대로 옮길 수 있습니다.</p>
+    <p>만화 페이지의 칸 배치를 짜서 벡터 셰이프 레이어가 든 PSD로 내려받습니다. 칸마다 폴더 하나씩, 읽는 순서대로 이름이 붙습니다. 포토샵에서 열면 직접 선택 도구로 모서리를 그대로 옮길 수 있습니다.</p>
   </div>
 
   <!-- What is being made comes first: the page, then the layout on it. Both are
@@ -366,11 +372,11 @@
          physical size and the resolution decides how many pixels that comes to;
          a screen page is a pixel count and has no physical size at all. -->
     <div class="field">
-      <label>인쇄용 크기</label>
+      <label>인쇄용 크기 <span class="u">(mm)</span></label>
       <div class="chips row" id="print-pages"></div>
     </div>
     <div class="field">
-      <label>화면용 크기</label>
+      <label>화면용 크기 <span class="u">(px)</span></label>
       <div class="chips row" id="screen-pages"></div>
     </div>
     <!-- The sliders that stand in for a preset when none of them fits, with the
@@ -392,7 +398,7 @@
           <!-- Not a margin but a spare edge: the paper is cut a little off
                every time, so ink meant to reach the edge has to start outside
                it. The document grows by this on all four sides. -->
-          <label for="bleed">도련 <span class="val" id="bleedv">35</span> px <span class="hint-sm" id="bleedmm"></span></label>
+          <label for="bleed">도련 <span class="val" id="bleedv">35</span> <span class="u">px</span></label>
           <input type="range" id="bleed" min="0" max="200" step="1" value="35">
         </div>
         <div class="side">
@@ -458,33 +464,33 @@
         <label>바깥 여백 <span class="hint-sm" id="marginsum"></span></label>
         <div class="quad">
           <div>
-            <label for="mt">위 <span class="val" id="mtv">140</span> px</label>
+            <label for="mt">위 <span class="val" id="mtv">140</span> <span class="u">px</span></label>
             <input type="range" id="mt" min="0" max="600" step="5" value="140">
           </div>
           <div>
-            <label for="mb">아래 <span class="val" id="mbv">140</span> px</label>
+            <label for="mb">아래 <span class="val" id="mbv">140</span> <span class="u">px</span></label>
             <input type="range" id="mb" min="0" max="600" step="5" value="140">
           </div>
           <div>
-            <label for="ml">왼쪽 <span class="val" id="mlv">140</span> px</label>
+            <label for="ml">왼쪽 <span class="val" id="mlv">140</span> <span class="u">px</span></label>
             <input type="range" id="ml" min="0" max="600" step="5" value="140">
           </div>
           <div>
-            <label for="mr">오른쪽 <span class="val" id="mrv">140</span> px</label>
+            <label for="mr">오른쪽 <span class="val" id="mrv">140</span> <span class="u">px</span></label>
             <input type="range" id="mr" min="0" max="600" step="5" value="140">
           </div>
         </div>
       </div>
       <div class="field">
-        <label for="gutter">칸 간격 <span class="val" id="gutterv">56</span> px</label>
+        <label for="gutter">칸 간격 <span class="val" id="gutterv">56</span> <span class="u">px</span></label>
         <input type="range" id="gutter" min="0" max="320" step="2" value="56">
       </div>
       <div class="field">
-        <label for="sw">테두리 두께 <span class="val" id="swv">10</span> px</label>
+        <label for="sw">테두리 두께 <span class="val" id="swv">10</span> <span class="u">px</span></label>
         <input type="range" id="sw" min="0" max="80" step="1" value="10">
       </div>
       <div class="field">
-        <label for="radius">모서리 둥글기 <span class="val" id="radiusv">0</span> px</label>
+        <label for="radius">모서리 둥글기 <span class="val" id="radiusv">0</span> <span class="u">px</span></label>
         <input type="range" id="radius" min="0" max="160" step="1" value="0">
       </div>
       <div class="field">
@@ -510,8 +516,8 @@
         <input type="file" id="ref-file" accept="image/*" hidden>
         <div class="row-btns">
           <button class="btn btn-ghost btn-sm" id="ref-pick">참고 이미지</button>
-          <button class="btn btn-ghost btn-sm" id="ref-hide" hidden>숨기기</button>
-          <button class="btn btn-ghost btn-sm" id="ref-clear" hidden>지우기</button>
+          <button class="btn btn-ghost btn-sm" id="ref-hide" disabled>숨기기</button>
+          <button class="btn btn-ghost btn-sm" id="ref-clear" disabled>지우기</button>
         </div>
         <p class="hint-sm">캔버스에 파일을 끌어다 놓아도 됩니다</p>
       </div>
@@ -572,40 +578,19 @@
         칸 안을 <strong>오른쪽 클릭</strong>하면 그 자리에서 갈라집니다. 자를 방향은 <strong>가로·세로</strong>로 고릅니다.
         경계선을 <strong>드래그</strong>하면 그 선이 통째로 움직이고, 선이 만나는 <strong>꼭짓점</strong>을 드래그하면 거기 모인 선들이 기울어집니다.
         <kbd>Alt</kbd>를 누른 채 경계선을 끌면 <strong>잡은 조각만</strong> 떨어져 나와, 한 단만 옆으로 어긋난 배치를 만들 수 있습니다.
+      </p>
+      <p class="note">
         선과 칸을 나눌 자리는 다른 경계선이나 페이지 한가운데, <strong>재단선</strong>에 <strong>달라붙습니다</strong> — 달라붙는 자리가 점선으로 표시되고, <kbd>Shift</kbd>를 누르면 붙지 않습니다.
-        <kbd>Ctrl</kbd>+<kbd>Z</kbd>로 되돌리고 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>로 다시 합니다.
-        슬라이더로 조절한 값도 되돌아가며, 드래그 한 번이 한 단계입니다.
       </p>
       <p class="note">
-        주황 점선이 <strong>재단선</strong>입니다. 그 바깥이 <strong>도련</strong>이고, 종이는 재단선 언저리에서 잘립니다 —
-        가장자리까지 채울 그림은 도련 끝까지 그려야 잘린 자리에 흰 띠가 남지 않습니다.
-        재단선은 화면에만 보이고 내보내는 파일에는 그려지지 않지만, <strong>PSD에는 그 자리에 안내선</strong>이 깔려 나옵니다.
-        <strong>바깥 여백</strong>은 네 방향을 따로 정할 수 있습니다 — 제본되는 쪽을 넓게 잡을 때 씁니다.
-      </p>
-      <p class="note">
-        <strong>배치 파일</strong>은 지금 페이지를 통째로 담은 작은 텍스트 파일입니다 — 칸 배치와 페이지 크기, 도련과 여백,
-        칸 모양과 읽는 순서까지 들어갑니다. 나중에 <strong>불러오기</strong>로 열면 그 자리에서 이어서 작업합니다.
-        참고 이미지는 담기지 않습니다. 불러오기도 <kbd>Ctrl</kbd>+<kbd>Z</kbd>로 되돌릴 수 있습니다.
-      </p>
-      <p class="note">
-        칸 안을 <strong>왼쪽 클릭</strong>하면 그 칸을 <strong>고릅니다</strong>. 다시 누르면 풀리고, 여러 칸을 골라둘 수 있습니다.
+        칸 안을 <strong>왼쪽 클릭</strong>하면 그 칸을 <strong>선택합니다</strong>. 다시 누르면 풀리고, 여러 칸을 선택해둘 수 있습니다.
         빈 곳을 클릭하거나 <kbd>Esc</kbd>를 누르면 전부 풀립니다.
-        고른 칸이 둘 이상이고 서로 변을 맞대 한 덩어리가 되면 <strong>합치기</strong> 버튼이 켜집니다 —
-        <strong>ㄱ자·ㄷ자</strong>처럼 꺾인 칸도 되고, 합친 칸을 다시 골라 더 키울 수도 있습니다. 풀려면 <kbd>Ctrl</kbd>+<kbd>Z</kbd>로 되돌리세요.
+        선택한 칸이 둘 이상이고 서로 변을 맞대 한 덩어리가 되면 <strong>합치기</strong> 버튼이 켜집니다.
       </p>
       <p class="note">
-        칸을 골라두면 왼쪽의 <strong>칸 모양</strong>이 그 칸들에만 걸립니다 — 테두리를 없애거나 굵게, 모서리를 둥글게,
-        바탕을 검게 하는 식으로 칸마다 다르게 줄 수 있습니다. 아무 칸도 고르지 않았으면 지금처럼 페이지 전체에 걸립니다.
-        <strong>칸 간격</strong>만은 늘 페이지 전체입니다 — 이웃한 두 칸이 절반씩 내주는 값이라 한 칸만 다르게 할 수 없습니다.
+        칸을 선택해두면 <strong>칸 모양</strong> 조절값이 그 칸들에만 적용됩니다.
+        <strong>칸 간격</strong>만은 늘 페이지 전체에 적용됩니다.
         칸에 준 값을 페이지 값과 같게 되돌리면 그 칸은 다시 페이지를 따라갑니다.
-      </p>
-      <p class="note">
-        <strong>PSD</strong>는 칸마다 폴더 하나로 나옵니다. 폴더에 벡터 마스크가 걸려 있어 안의 <strong>그림</strong> 레이어에 그리면 칸 모양대로 잘리고,
-        테두리는 그 폴더의 레이어 스타일이라 포토샵에서 마스크 모서리를 옮기면 같이 따라옵니다. 고칠 패스가 한 벌뿐입니다.
-        맨 아래에는 도련까지 덮는 <strong>페이지 바탕</strong> 레이어가 깔립니다 — 인쇄로 넘길 흰 종이이자,
-        칸을 지우고 가장자리까지 가득 채울 그림을 그릴 자리입니다. 어떤 마스크도 걸려 있지 않습니다.
-        칸 번호와 참고 이미지는 화면에서만 쓰는 것이라 어떤 파일에도 들어가지 않고, 순서는 대신 폴더 이름이 가집니다.
-        PNG와 SVG는 칸 사이가 투명한 채로 나갑니다.
       </p>
     </div>
   </div>
@@ -2018,6 +2003,23 @@
       c.lineWidth = 2 * s;
       c.setLineDash([18 * s, 12 * s]);
       c.strokeRect(t.x, t.y, t.w, t.h);
+
+      // Say what the line is, on the page rather than in a paragraph
+      // underneath it. It hangs just inside the trim, in the margin band: the
+      // bleed outside is only a few millimetres and the words would not fit.
+      // Sized against the zoom so it stays readable however big the page is.
+      var lead = 10 * s, from = t.x + 9 * s;
+      c.setLineDash([]);
+      c.lineWidth = 1.5 * s;
+      c.beginPath();
+      c.moveTo(from, t.y);
+      c.lineTo(from, t.y + lead);
+      c.stroke();
+      c.fillStyle = 'rgba(239,78,35,0.55)';
+      c.font = '700 ' + (Math.round(12 * s)) + 'px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+      c.textAlign = 'left';
+      c.textBaseline = 'top';
+      c.fillText('재단선', from + 4 * s, t.y + lead);
       c.restore();
     }
 
@@ -2785,8 +2787,8 @@
   }
 
   function pickedWord() {
-    if (picked.length === 1) return '칸 하나를 골랐습니다 — 칸 모양을 바꾸면 이 칸에만 걸립니다.';
-    return '칸 ' + picked.length + '개를 골랐습니다 — 합치거나, 칸 모양을 한꺼번에 바꿀 수 있습니다.';
+    if (picked.length === 1) return '칸 하나를 선택했습니다 — 칸 모양을 바꾸면 이 칸에만 적용됩니다.';
+    return '칸 ' + picked.length + '개를 선택했습니다 — 합치거나, 칸 모양을 한꺼번에 바꿀 수 있습니다.';
   }
 
   // A cut or a merge can take a picked panel away, so the list is trimmed to
@@ -2795,9 +2797,9 @@
   // than after the fact.
   function showPicked() {
     picked = livePicked();
-    pickedOut.textContent = picked.length ? '고른 칸 ' + picked.length + '개' : '';
+    pickedOut.textContent = picked.length ? '선택한 칸 ' + picked.length + '개' : '';
     mergeBtn.disabled = picked.length < 2 || !fuseFaces(cloneMesh(mesh), picked);
-    mergeBtn.title = picked.length < 2 ? '칸을 둘 이상 골라주세요'
+    mergeBtn.title = picked.length < 2 ? '칸을 둘 이상 선택해주세요'
       : (mergeBtn.disabled ? '이 칸들은 한 덩어리가 되지 않습니다' : '');
     showStyle();
   }
@@ -2810,7 +2812,7 @@
     var faces = picked.map(function (id) { return faceById(mesh, id); }).filter(Boolean);
     var head = document.getElementById('shape-scope');
     head.textContent = faces.length
-      ? (faces.length === 1 ? '— 고른 칸 하나에만' : '— 고른 칸 ' + faces.length + '개에만')
+      ? (faces.length === 1 ? '— 선택한 칸 하나에만' : '— 선택한 칸 ' + faces.length + '개에만')
       : '';
     STYLE_KEYS.forEach(function (k) {
       var vals = faces.map(function (f) { return styleOf(f)[k]; });
@@ -2819,8 +2821,8 @@
       var el = document.getElementById(k);
       if (!el) return;
       el.value = v;
-      var out = document.getElementById(k + 'v');
-      if (out) out.textContent = v;
+      // the ones with sliders are measured, and are said in the page's own unit
+      if (METRIC_BASE[k]) showMetric(k, v);
     });
   }
 
@@ -3322,17 +3324,32 @@
       el.max = Math.round(b[1] * k);
       el.step = b[2];
       el.value = state[id];
-      document.getElementById(id + 'v').textContent = state[id];
+      showMetric(id, state[id]);
     });
     showNotes();
   }
+
+  // These are pixels underneath whatever they are shown as - the border has to
+  // land on whole ones - but a page measured in millimetres should be described
+  // in them throughout. A gutter of 56px means nothing next to a page of 152mm.
+  function showMetric(id, v) {
+    document.getElementById(id + 'v').textContent = metricText(v);
+    var u = document.querySelector('label[for="' + id + '"] .u');
+    if (u) u.textContent = metricUnit();
+  }
+
+  function metricText(v) {
+    // one decimal in mm: a 10px border is 0.85mm, and rounding it to whole
+    // millimetres would report every thin line as the same 1mm
+    return state.unit === 'mm' ? (v / state.dpi * MM_PER_INCH).toFixed(1) : String(v);
+  }
+
+  function metricUnit() { return state.unit === 'mm' ? 'mm' : 'px'; }
 
   // Bleed is asked for in millimetres by every printer alive, so say what the
   // pixels come to. And say when margins have been asked for that the page
   // cannot give, rather than letting the sliders quietly mean nothing.
   function showNotes() {
-    document.getElementById('bleedmm').textContent =
-      state.unit === 'mm' && state.bleed > 0 ? '(' + pxToMm(state.bleed) + 'mm)' : '';
     var m = marginsPx();
     var tight = Math.abs(m.t - state.mt) > 0.5 || Math.abs(m.b - state.mb) > 0.5 ||
                 Math.abs(m.l - state.ml) > 0.5 || Math.abs(m.r - state.mr) > 0.5;
@@ -3487,7 +3504,7 @@
     el.addEventListener('change', letGo);
     el.addEventListener('input', function () {
       var v = parseInt(el.value, 10);
-      out.textContent = el.value;
+      out.textContent = METRIC_BASE[id] ? metricText(v) : el.value;
       holdForUndo();
       if (id === 'count' || id === 'dyn') { state[id] = v; regenerate(); return; }
       if (id === 'w' || id === 'h') {
@@ -3608,8 +3625,10 @@
 
   function showRefButtons() {
     var has = !!ref.img;
-    refClear.hidden = !has;
-    refHide.hidden = !has;
+    // dimmed rather than gone: a button that vanishes takes with it any idea
+    // that the thing it does exists at all
+    refClear.disabled = !has;
+    refHide.disabled = !has;
     refOpts.hidden = !has || ref.hidden;      // nothing to adjust while it is out of sight
     refHide.textContent = ref.hidden ? '보이기' : '숨기기';
   }
