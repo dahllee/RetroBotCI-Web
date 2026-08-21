@@ -569,8 +569,7 @@
         <button class="btn btn-ghost" id="copy-png">PNG 복사</button>
       </div>
       <p class="note">
-        칸 안을 <strong>오른쪽 클릭</strong>하면 그 자리에서 갈라집니다. 자를 방향은 <strong>가로·세로</strong>로 고르고,
-        <kbd>Alt</kbd>를 <strong>누르고 있는 동안</strong>은 반대 방향이 됩니다 — 누르면 칩과 미리보기 선이 바로 따라 바뀝니다.
+        칸 안을 <strong>오른쪽 클릭</strong>하면 그 자리에서 갈라집니다. 자를 방향은 <strong>가로·세로</strong>로 고릅니다.
         경계선을 <strong>드래그</strong>하면 그 선이 통째로 움직이고, 선이 만나는 <strong>꼭짓점</strong>을 드래그하면 거기 모인 선들이 기울어집니다.
         <kbd>Alt</kbd>를 누른 채 경계선을 끌면 <strong>잡은 조각만</strong> 떨어져 나와, 한 단만 옆으로 어긋난 배치를 만들 수 있습니다.
         선과 칸을 나눌 자리는 다른 경계선이나 페이지 한가운데, <strong>재단선</strong>에 <strong>달라붙습니다</strong> — 달라붙는 자리가 점선으로 표시되고, <kbd>Shift</kbd>를 누르면 붙지 않습니다.
@@ -2146,7 +2145,7 @@
   function previewCutLine(c, entry, s) {
     if (!entry.face) return;
     var bb = polyBBox(entry.poly);
-    var dir = hover.alt ? (state.dir === 'h' ? 'v' : 'h') : state.dir;
+    var dir = state.dir;
     var at = clamp(dir === 'v' ? (hover.x - bb.x) / bb.w : (hover.y - bb.y) / bb.h, 0.05, 0.95);
     var probe = cloneMesh(mesh);
     var face = faceById(probe, entry.face.id);
@@ -2576,9 +2575,6 @@
   canvas.addEventListener('mousemove', function (e) {
     var p = toPage(e);
     hover.x = p[0]; hover.y = p[1];
-    // the mouse knows about Alt too, and catches a press made before the page
-    // had the keyboard
-    if (hover.alt !== e.altKey) { hover.alt = e.altKey; showDir(); }
     trackTip(e);
 
     if (drag && drag.badge !== undefined) {
@@ -2776,7 +2772,7 @@
     if (handleAt(p[0], p[1]) !== null || cutAt(p[0], p[1])) return;
     var pn = panelAt(p[0], p[1]);
     if (!pn) return;
-    splitPanel(pn, p[0], p[1], e.altKey ? (state.dir === 'h' ? 'v' : 'h') : state.dir, e.shiftKey);
+    splitPanel(pn, p[0], p[1], state.dir, e.shiftKey);
   });
 
   function togglePick(id) {
@@ -3423,26 +3419,9 @@
     render();
   }, 0);
 
-  // Alt turns the cut the other way for as long as it is held. It always did,
-  // but only the next mouse move noticed - so holding it looked like nothing
-  // was happening until the hand twitched. Now the press itself repaints, and
-  // the chip moves across to say which way a cut would go if made right now.
   function showDir() {
-    var flipped = hover.alt ? (state.dir === 'h' ? 'v' : 'h') : state.dir;
-    press(dirHost, dirHost.children[flipped === 'h' ? 0 : 1]);
+    press(dirHost, dirHost.children[state.dir === 'h' ? 0 : 1]);
   }
-
-  function altHeld(down) {
-    if (hover.alt === down) return;
-    hover.alt = down;
-    showDir();
-    render();
-  }
-
-  window.addEventListener('keydown', function (e) { if (e.key === 'Alt') altHeld(true); });
-  window.addEventListener('keyup', function (e) { if (e.key === 'Alt') altHeld(false); });
-  // let go of it if the window does: no keyup arrives once focus has gone
-  window.addEventListener('blur', function () { altHeld(false); });
 
   chips(document.getElementById('orders'), [['우 → 좌', true], ['좌 → 우', false]], function (e) {
     push();
