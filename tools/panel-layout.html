@@ -120,6 +120,11 @@
     /* its last field zeroes its own margin, which butts the next control
        straight up against the button */
     #ref-opts { margin-bottom: 24px; }
+    /* the button ends the margin group, and the next slider needs to read as a
+       separate thing rather than the row under it */
+    /* padding, not margin: it is the last thing in its field, and a bottom
+       margin there collapses into the field's own instead of adding to it */
+    .mirror-row { margin-top: 12px; padding-bottom: 16px; }
 
     /* A rule across the control column, naming the group under it. The auto
        layout controls are a different job from the page metrics above them. */
@@ -155,7 +160,9 @@
     .picker .field:last-child { margin-bottom: 0; }
     .picker .field > label {
       flex: 0 0 auto;
-      width: 68px;
+      /* the longest of them - 인쇄용 크기 (mm) - measures 99px; anything less and
+         the row of buttons starts on top of the last word */
+      width: 102px;
       margin-bottom: 0;
       padding-top: 15px;      /* centres on the first row of buttons, not above it */
       white-space: nowrap;
@@ -464,21 +471,26 @@
         <label>바깥 여백 <span class="hint-sm" id="marginsum"></span></label>
         <div class="quad">
           <div>
-            <label for="mt">위 <span class="val" id="mtv">140</span> <span class="u">px</span></label>
-            <input type="range" id="mt" min="0" max="600" step="5" value="140">
+            <label for="mt">위 <span class="val" id="mtv">142</span> <span class="u">px</span></label>
+            <input type="range" id="mt" min="0" max="600" step="1" value="142">
           </div>
           <div>
-            <label for="mb">아래 <span class="val" id="mbv">140</span> <span class="u">px</span></label>
-            <input type="range" id="mb" min="0" max="600" step="5" value="140">
+            <label for="mb">아래 <span class="val" id="mbv">142</span> <span class="u">px</span></label>
+            <input type="range" id="mb" min="0" max="600" step="1" value="142">
           </div>
           <div>
-            <label for="ml">왼쪽 <span class="val" id="mlv">140</span> <span class="u">px</span></label>
-            <input type="range" id="ml" min="0" max="600" step="5" value="140">
+            <label for="ml">왼쪽 <span class="val" id="mlv">142</span> <span class="u">px</span></label>
+            <input type="range" id="ml" min="0" max="600" step="1" value="142">
           </div>
           <div>
-            <label for="mr">오른쪽 <span class="val" id="mrv">140</span> <span class="u">px</span></label>
-            <input type="range" id="mr" min="0" max="600" step="5" value="140">
+            <label for="mr">오른쪽 <span class="val" id="mrv">177</span> <span class="u">px</span></label>
+            <input type="range" id="mr" min="0" max="600" step="1" value="177">
           </div>
+        </div>
+        <!-- Facing pages are mirror images: the wide margin is at the spine, and
+             the spine changes sides every time you turn one. -->
+        <div class="row-btns mirror-row">
+          <button class="btn btn-ghost btn-sm" id="mirror">좌우 반전</button>
         </div>
       </div>
       <div class="field">
@@ -1591,8 +1603,9 @@
     unit: 'mm', mmW: 152, mmH: 225, dpi: 300,
     w: 1795, h: 2657, bleed: 35,
     // one per side: a bound page wants more room at the spine than the fore
-    // edge, and 천/지 are rarely the same either
-    mt: 140, mb: 140, ml: 140, mr: 140,
+    // edge, and 천/지 are rarely the same either. 12mm all round with 15mm on
+    // the binding side, in pixels at the starting 300dpi.
+    mt: 142, mb: 142, ml: 142, mr: 177,
     gutter: 56, sw: 10, radius: 0,
     fill: '#ffffff', stroke: '#000000',
     dir: 'h', rtl: false, numbers: true, count: 6, dyn: 40, seed: 7,
@@ -3312,7 +3325,7 @@
   // page itself stayed the same size on paper.
   var METRIC_BASE = {
     bleed: [0, 200, 1],
-    mt: [0, 600, 5], mb: [0, 600, 5], ml: [0, 600, 5], mr: [0, 600, 5],
+    mt: [0, 600, 1], mb: [0, 600, 1], ml: [0, 600, 1], mr: [0, 600, 1],
     gutter: [0, 320, 2], sw: [0, 80, 1], radius: [0, 160, 1]
   };
 
@@ -3457,6 +3470,19 @@
   });
 
   mergeBtn.addEventListener('click', doMerge);
+
+  // Swap the side margins over, for the facing page. The layout rides along:
+  // the page rectangle moves and rescaleMesh carries the panels with it.
+  document.getElementById('mirror').addEventListener('click', function () {
+    if (state.ml === state.mr) { say('좌우 여백이 이미 같습니다.'); return; }
+    push();
+    var l = state.ml;
+    state.ml = state.mr;
+    state.mr = l;
+    showMetrics();
+    render();
+    say('바깥 여백을 좌우로 뒤집었습니다.');
+  });
 
   var orderReset = document.getElementById('order-reset');
   orderReset.addEventListener('click', function () {
