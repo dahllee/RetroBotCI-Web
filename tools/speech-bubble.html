@@ -287,6 +287,11 @@
       <label>꼬리 방향</label>
       <div class="chips row" id="tails"></div>
     </div>
+
+    <div class="field">
+      <label>선</label>
+      <div class="chips row" id="strokes"></div>
+    </div>
   </div>
 
   <div class="studio">
@@ -1588,8 +1593,7 @@
     // burstKnots emits valley, spike, valley, spike... so the valleys are even.
     spiky:       { label: '뾰족(외침)',  count: { min: 14, max: 20, def: 16, label: '뾰족 개수' }, height: { min: 10, max: 60, def: 26, label: '뾰족 높이' }, core: 0.74, stretchTail: { length: 0.88 }, tailBase: 0.385, build: function (b, d, tailDir) { return burstKnots(b.cx, b.cy, b.rx, b.ry, count('spiky'), SHAPES.spiky.core, heightOf('spiky'), 0, 0, tailDir, 1, false, SHAPES.spiky.tailBase); } },
     comic:       { label: '만화 외침',   seeded: true, damped: true, count: { min: 14, max: 28, def: 18, label: '뾰족 개수' }, vary: { def: 65, label: '뾰족 크기 편차' }, height: { min: 10, max: 60, def: 38, label: '뾰족 높이' }, core: 0.62, stretchTail: { length: 1.22, radial: true }, tailBase: 0.735, build: function (b, d, tailDir) { return burstKnots(b.cx, b.cy, b.rx, b.ry, count('comic'), SHAPES.comic.core, heightOf('comic'), varyOf('comic') * (d == null ? 1 : d), state.seed, tailDir, d, true, SHAPES.comic.tailBase); } },
-    curvy:       { label: '곡선 외침',   seeded: true, damped: true, miterLimit: 60, count: { min: 9, max: 28, def: 18, label: '뾰족 개수' }, vary: { def: 65, label: '뾰족 크기 편차' }, height: { min: 10, max: 60, def: 38, floorPerSpike: 240, label: '뾰족 높이' }, core: 0.62, stretchTail: { length: 1.22, radial: true }, tailBase: 0.735, build: function (b, d, tailDir) { return burstKnots(b.cx, b.cy, b.rx, b.ry, count('curvy'), SHAPES.curvy.core, heightOf('curvy'), varyOf('curvy') * (d == null ? 1 : d), state.seed, tailDir, d, true, SHAPES.curvy.tailBase, 0.42 * (d == null ? 1 : d), tipFloor(SHAPES.curvy.miterLimit), true); } },
-    whisper:     { label: '속삭임',      build: function (b) { return ellipseKnots(b.cx, b.cy, b.rx, b.ry); }, dashed: true }
+    curvy:       { label: '곡선 외침',   seeded: true, damped: true, miterLimit: 60, count: { min: 9, max: 28, def: 18, label: '뾰족 개수' }, vary: { def: 65, label: '뾰족 크기 편차' }, height: { min: 10, max: 60, def: 38, floorPerSpike: 240, label: '뾰족 높이' }, core: 0.62, stretchTail: { length: 1.22, radial: true }, tailBase: 0.735, build: function (b, d, tailDir) { return burstKnots(b.cx, b.cy, b.rx, b.ry, count('curvy'), SHAPES.curvy.core, heightOf('curvy'), varyOf('curvy') * (d == null ? 1 : d), state.seed, tailDir, d, true, SHAPES.curvy.tailBase, 0.42 * (d == null ? 1 : d), tipFloor(SHAPES.curvy.miterLimit), true); } }
   };
 
   // Thought bubbles trail shrinking puffs instead of a spike.
@@ -1641,7 +1645,7 @@
     var shape = SHAPES[key];
 
     function assemble(body, damp) {
-      if (!tailDir) return { subpaths: [body], dashed: !!shape.dashed };
+      if (!tailDir) return { subpaths: [body], dashed: state.dashed };
       if (shape.stretchTail) {
         // Find which spike the tail will grow from, then build the shape again
         // with that one held at its nominal size. Otherwise the tail inherits
@@ -1654,18 +1658,18 @@
                                   Math.min(b.rx, b.ry) * shape.stretchTail.length, 1,
                                   shape.stretchTail.radial,
                                   shape.miterLimit ? tipFloor(shape.miterLimit) : 0)],
-          dashed: !!shape.dashed
+          dashed: state.dashed
         };
       }
       if (key === 'thought') {
         return {
           subpaths: [body].concat(thoughtTail(b.cx, b.cy, b.rx * 0.84, b.ry * 0.80, tailDir, body)),
-          dashed: false
+          dashed: state.dashed
         };
       }
       return {
         subpaths: [spliceTail(body, b.cx, b.cy, tailDir, shape.tail, Math.min(b.rx, b.ry))],
-        dashed: !!shape.dashed
+        dashed: state.dashed
       };
     }
 
@@ -1791,7 +1795,7 @@
 
   // ══ State ═════════════════════════════════════════════
 
-  var state = { shape: 'ellipse', tail: 'bottom-left', fill: '#ffffff',
+  var state = { shape: 'ellipse', tail: 'bottom-left', dashed: false, fill: '#ffffff',
                 stroke: '#000000', w: 560, h: 320, sw: 3, pad: 40,
                 counts: {}, varies: {}, heights: {}, params: {},
                 seed: (Math.random() * 0x7fffffff) | 0 };
@@ -2107,6 +2111,11 @@
     Object.keys(SHAPES).map(function (k) { return [k, SHAPES[k].label]; }), 'shape', false);
   buildChips(document.getElementById('tails'),
     Object.keys(TAIL_ANGLE).map(function (k) { return [k, TAIL_LABEL[k]]; }), 'tail', true);
+  // The chips carry their value through as-is, so booleans work like the string
+  // keys above. Dashes used to be a shape of their own - an ellipse that was
+  // only an ellipse - which meant no other bubble could whisper.
+  buildChips(document.getElementById('strokes'),
+    [[false, '실선'], [true, '점선']], 'dashed', false);
 
   document.getElementById('hgt').addEventListener('input', function (e) {
     state.heights[state.shape] = Number(e.target.value);
