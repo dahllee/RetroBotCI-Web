@@ -1893,7 +1893,12 @@
     // of these ends is chopped square.
     flash:       { label: '플래시', multi: true, seeded: true, defaultTail: '', miterLimit: 90,
                    fillFromStroke: true, defaultStroke: 0,
-                   count: { min: 20, max: 200, def: 96, label: '선 개수' },
+                   // Enough that the slivers close ranks at their bases and the
+                   // edge of the middle stops being a place you can point at.
+                   // That needs them thin as well as many - at the default
+                   // width they touch around 200 - so the room is here to be
+                   // used with the width slider, not on its own.
+                   count: { min: 20, max: 400, def: 96, label: '선 개수' },
                    vary:  { def: 38, label: '선 길이 편차' },
                    params: [
                      { key: 'inner', label: '가운데 크기', min: 10, max: 85, step: 1, def: 62, unit: '%' },
