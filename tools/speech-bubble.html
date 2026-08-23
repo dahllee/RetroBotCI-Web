@@ -593,6 +593,52 @@
     var p1 = along(base1, tip, 1 / 3), p2 = along(base1, tip, 2 / 3);
     var p3 = along(tip, base2, 1 / 3), p4 = along(tip, base2, 2 / 3);
 
+    // Straight edges read as a triangle pinned to the outline; these bend.
+    if (opts.curved) {
+      // Taking the direction to leave in from the outline's tangent sounds
+      // right and is not: on a wavy outline that tangent swings by tens of
+      // degrees depending on whether the tail happens to attach near a crest or
+      // a trough. Nudge a slider and the attachment slides along the wave, the
+      // tail swings with it, and often enough it swings into the body - which
+      // the self-intersection check answers by damping the waves away to
+      // nothing. The tail looked unstable; what was unstable was what it was
+      // being measured against.
+      //
+      // So bend it against its own chord instead: both controls a fixed
+      // distance off it, which is one bend rather than two and the same bend
+      // wherever the tail attaches.
+      //
+      // Each edge bends toward the other, so both sides of the tail are hollow
+      // and it narrows as it goes - a horn rather than a hook. Which hand that
+      // is depends on where the tail sits on the bubble, so ask rather than
+      // fix it: the side facing the opposite base is the inside.
+      // Most of the hollow belongs at the root, so that the edge is nearly
+      // straight by the time it reaches the point. Tapering the offset - deep
+      // control at the base, shallow one at the tip - is the obvious way and
+      // the wrong one: the control polygon then turns one way and back, and
+      // back is an inflection. Keep both controls the same distance off the
+      // chord and slide them towards the base instead. The polygon stays
+      // convex, so the edge still bends once, and it does its bending early.
+      var bow = opts.bow || 0.1;
+      var a1 = opts.bowAt1 == null ? 0.12 : opts.bowAt1;
+      var a2 = opts.bowAt2 == null ? 0.4 : opts.bowAt2;
+      function bowEdge(from, to, toward, f1, f2) {
+        var vx = to.x - from.x, vy = to.y - from.y;
+        var L = Math.hypot(vx, vy) || 1;
+        var px = -vy / L, py = vx / L;
+        if ((toward.x - from.x) * px + (toward.y - from.y) * py < 0) { px = -px; py = -py; }
+        var o = bow * L;
+        return [[from.x + vx * f1 + px * o, from.y + vy * f1 + py * o],
+                [from.x + vx * f2 + px * o, from.y + vy * f2 + py * o]];
+      }
+      // The first edge runs base to tip and the second tip to base, so the
+      // near-the-base end is handed to them the other way round.
+      var eA = bowEdge(base1, tip, base2, a1, a2);
+      var eB = bowEdge(tip, base2, base1, 1 - a2, 1 - a1);
+      p1 = eA[0]; p2 = eA[1];
+      p3 = eB[0]; p4 = eB[1];
+    }
+
     out.push({ x: base1.x, y: base1.y, ix: last[4], iy: last[5], ox: p1[0], oy: p1[1], linked: false });
     out.push({ x: tip.x, y: tip.y, ix: p2[0], iy: p2[1], ox: p3[0], oy: p3[1], linked: false });
     base2.ix = p4[0];
@@ -1066,17 +1112,30 @@
 
   var CLOUD = { puff: 0.62, sizeVar: 1.15, radial: 0.14 };
 
+  // A superellipse: |x/rx|^n + |y/ry|^n = 1. At n = 2 it is the ellipse exactly,
+  // and raising n squares it off - the sides straighten and the turn gathers
+  // into the corners. Everything downstream only asks this for points, so the
+  // arc-length walk, the relaxation and the span normals all still hold.
+  function superPoint(rx, ry, t, n) {
+    var c = Math.cos(t), s = Math.sin(t);
+    if (n === 2) return [rx * c, ry * s];
+    var e = 2 / n;
+    return [rx * (c < 0 ? -1 : 1) * Math.pow(Math.abs(c), e),
+            ry * (s < 0 ? -1 : 1) * Math.pow(Math.abs(s), e)];
+  }
+
   function cloudKnots(cx, cy, rx, ry, bumps, seed, damp) {
+    var n = 2;
     var rand = rng(seed), i;
     var sizeVar = CLOUD.sizeVar * damp;
     var radial = CLOUD.radial * damp;
     var puff = CLOUD.puff * (0.55 + 0.45 * damp);
 
     // arc-length table around the ellipse
-    var N = 1200, table = [{ t: 0, s: 0 }], total = 0, prev = [rx, 0];
+    var N = 1200, table = [{ t: 0, s: 0 }], total = 0, prev = superPoint(rx, ry, 0, n);
     for (i = 1; i <= N; i++) {
       var t = (i / N) * TAU;
-      var p = [rx * Math.cos(t), ry * Math.sin(t)];
+      var p = superPoint(rx, ry, t, n);
       total += Math.hypot(p[0] - prev[0], p[1] - prev[1]);
       table.push({ t: t, s: total });
       prev = p;
@@ -1102,7 +1161,8 @@
     }
 
     var at = function (t) {
-      return [cx + rx * Math.cos(t - Math.PI / 2), cy + ry * Math.sin(t - Math.PI / 2)];
+      var p = superPoint(rx, ry, t - Math.PI / 2, n);
+      return [cx + p[0], cy + p[1]];
     };
     var wrap = function (t) { return ((t % TAU) + TAU) % TAU; };
 
@@ -1179,6 +1239,135 @@
       var pc = ctrl[(j - 1 + bumps) % bumps];
       return { x: a[0], y: a[1], ix: pc.c2[0], iy: pc.c2[1],
                ox: ctrl[j].c1[0], oy: ctrl[j].c1[1], linked: false };
+    });
+  }
+
+  // A cloud's anchors are its notches: both handles there point outward, which
+  // is what makes the sharp valley between two puffs. A wave has to bend at the
+  // valley as well, so the anchors alternate outside and inside the base curve
+  // and the curve is fitted through all of them, with the two handles at each
+  // anchor collinear. Nothing kinks because nothing is asked to.
+  //
+  // Depth and wavelength are pixels, not shares of the base curve, and both are
+  // measured on the finished outline rather than on the curve it was laid out
+  // against. Expressed as shares they drift: the depth follows whichever radius
+  // is shorter, so stretching the bubble flattens the waves, and the wavelength
+  // comes out long because the path that zigzags in and out is longer than the
+  // curve underneath it.
+  function waveKnots(cx, cy, rx, ry, seed, damp, opts) {
+    opts = opts || {};
+    var n = opts.n || 2;
+    var i;
+    var amp = Math.max(0.5, (opts.amp == null ? 20 : opts.amp) * damp);
+    var lambda = Math.max(16, opts.wavelength || 90);
+    var sizeVar = (opts.sizeVar || 0) * damp;
+
+    // Peaks stand amp clear of the base curve, so pull the curve in by that
+    // much and the outline ends up the size it was asked for.
+    var brx = Math.max(6, rx - amp), bry = Math.max(6, ry - amp);
+
+    function pointAt(t) {
+      var p = superPoint(brx, bry, t - Math.PI / 2, n);
+      return [cx + p[0], cy + p[1]];
+    }
+
+    // Offset along the curve's own normal rather than straight out from the
+    // centre: on a squared-off outline those directions part company near the
+    // corners, and following the centre there tilts the waves.
+    function normalAt(t) {
+      var e = 0.004, a = pointAt(t - e), b = pointAt(t + e);
+      var dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1;
+      var nx = dy / L, ny = -dx / L;
+      var p = pointAt(t);
+      if (nx * (p[0] - cx) + ny * (p[1] - cy) < 0) { nx = -nx; ny = -ny; }
+      return [nx, ny];
+    }
+
+    var N = 1440, table = [{ t: 0, s: 0 }], total = 0, prev = superPoint(brx, bry, 0, n);
+    for (i = 1; i <= N; i++) {
+      var t = (i / N) * TAU;
+      var p = superPoint(brx, bry, t, n);
+      total += Math.hypot(p[0] - prev[0], p[1] - prev[1]);
+      table.push({ t: t, s: total });
+      prev = p;
+    }
+
+    var wrap = function (a) { return ((a % TAU) + TAU) % TAU; };
+
+    function pass(M) {
+      var r = rng(seed), j;
+      var shares = [], jit = [], sum = 0;
+      for (j = 0; j < M; j++) { var sh = 1 + sizeVar * (r() * 2 - 1) * 0.5; shares.push(sh); sum += sh; }
+      for (j = 0; j < M; j++) jit.push(r() * 2 - 1);
+
+      var ts = [], acc = 0, k = 0;
+      for (j = 0; j < M; j++) {
+        var want = (acc / sum) * total;
+        while (k < table.length - 1 && table[k + 1].s < want) k++;
+        while (k > 0 && table[k].s > want) k--;
+        ts.push(table[k].t);
+        acc += shares[j];
+      }
+
+      function anchorsOf() {
+        return ts.map(function (tv, q) {
+          var pt = pointAt(tv), nv = normalAt(tv);
+          // Peak and trough go the same distance, which is what makes them the
+          // same shape.
+          var side = (q % 2 === 0 ? 1 : -1);
+          var d = amp * side * (1 + sizeVar * jit[q] * 0.45);
+          return [pt[0] + nv[0] * d, pt[1] + nv[1] * d];
+        });
+      }
+
+      // Even spacing on the base curve is not even spacing on the outline: the
+      // offset moves each anchor, and near a tight corner it moves neighbours
+      // apart by very different amounts. Relax against the finished chords.
+      var P = anchorsOf();
+      for (var it = 0; it < 60; it++) {
+        P = anchorsOf();
+        var D = [];
+        for (j = 0; j < M; j++) {
+          var nx1 = (j + 1) % M;
+          D.push(Math.hypot(P[nx1][0] - P[j][0], P[nx1][1] - P[j][1]) / shares[j]);
+        }
+        for (j = 0; j < M; j++) {
+          var pv = D[(j - 1 + M) % M], nx2 = D[j];
+          var gap = wrap(ts[(j + 1) % M] - ts[(j - 1 + M) % M]);
+          if (gap > Math.PI * 1.5) gap = TAU - gap;
+          ts[j] = wrap(ts[j] - 0.25 * ((pv - nx2) / (pv + nx2)) * gap);
+        }
+      }
+      P = anchorsOf();
+      var L = 0;
+      for (j = 0; j < M; j++) {
+        var q2 = P[(j + 1) % M];
+        L += Math.hypot(q2[0] - P[j][0], q2[1] - P[j][1]);
+      }
+      return { P: P, L: L, M: M };
+    }
+
+    // Start from the base perimeter, then re-count against the length actually
+    // drawn until the two agree. A wavelength is peak to peak, which is two
+    // anchors.
+    var res = pass(Math.max(6, Math.round(total / lambda) * 2));
+    for (var tries = 0; tries < 4; tries++) {
+      var want = Math.max(6, Math.round(res.L / lambda) * 2);
+      if (want === res.M) break;
+      res = pass(want);
+    }
+
+    var P = res.P, M = res.M;
+
+    // Catmull-Rom: each anchor's tangent comes from the line between its
+    // neighbours, so both handles lie on it and the curve passes through
+    // smoothly - peak and trough alike.
+    return P.map(function (p, j) {
+      var pv = P[(j - 1 + M) % M], nx2 = P[(j + 1) % M];
+      var tx = (nx2[0] - pv[0]) / 6, ty = (nx2[1] - pv[1]) / 6;
+      return { x: p[0], y: p[1],
+               ix: p[0] - tx, iy: p[1] - ty,
+               ox: p[0] + tx, oy: p[1] + ty, linked: true };
     });
   }
 
@@ -1588,6 +1777,30 @@
     angular:     { label: '각진 상자',   build: function (b) { return angularKnots(b.x0, b.y0, b.x1, b.y1, Math.min(b.w, b.h) * 0.22); } },
     polygon:     { label: '다각형',      seeded: true, damped: true, count: { min: 5, max: 16, def: 7, label: '변 개수' }, vary: { def: 45, label: '변 길이 편차' }, build: function (b, d) { return polygonKnots(b.cx, b.cy, b.rx, b.ry, count('polygon'), varyOf('polygon') * (d == null ? 1 : d), state.seed); } },
     thought:     { label: '생각',        seeded: true, damped: true, softJoin: true, count: { min: 6, max: 24, def: 12, label: '봉우리 개수' }, build: function (b, d) { return cloudKnots(b.cx, b.cy, b.rx * 0.84, b.ry * 0.80, count('thought'), state.seed, d); } },
+    // The cloud's machinery with the puffs turned right down and the base curve
+    // squared off: an outline that wanders rather than billows.
+    wavy:        { label: '물결',        seeded: true, damped: true, softJoin: true,
+                   tail:   { curved: true, width: 0.29 },
+                   vary:   { def: 53, label: '물결 크기 편차' },
+                   params: [
+                     // Past about 40 against the default wavelength the crests
+                     // reach across the troughs either side and the outline
+                     // knots itself. The damping catches it, but the shape it
+                     // hands back is not one anyone asked for, so the slider
+                     // stops short of there.
+                     { key: 'depth',      label: '물결 깊이', min: 2, max: 30, step: 1, def: 11, unit: ' px' },
+                     { key: 'wavelength', label: '물결 파장', min: 30, max: 240, step: 5, def: 145, unit: ' px' },
+                     { key: 'corner',     label: '모서리',    min: 0, max: 100, def: 20, unit: '%' }
+                   ],
+                   build: function (b, d) {
+                     var p = paramsOf('wavy');
+                     return waveKnots(b.cx, b.cy, b.rx, b.ry, state.seed, d, {
+                       n: 2 + (p.corner / 100) * 3,
+                       amp: p.depth,
+                       wavelength: p.wavelength,
+                       sizeVar: varyOf('wavy') * 1.3
+                     });
+                   } },
     // Burst outlines already bristle with spikes, so their tail reaches
     // further out to read as a tail rather than as another spike.
     // burstKnots emits valley, spike, valley, spike... so the valleys are even.
