@@ -1081,6 +1081,43 @@
     ];
   }
 
+  // The angular box with a barb at every corner. Each vertex is replaced by
+  // three: a point back along the edge that arrives, the barb's tip, and a
+  // point along the edge that leaves. Every run between them is straight.
+  //
+  // Each barb splits the angle its two edges make, so it leans the way the
+  // corner itself does.
+  function barbedKnots(x0, y0, x1, y1, c, len, half) {
+    c = Math.min(c, (x1 - x0) / 3, (y1 - y0) / 3);
+    var cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    var V = [[x0 + c, y0], [x1 - c, y0], [x1, y0 + c], [x1, y1 - c],
+             [x1 - c, y1], [x0 + c, y1], [x0, y1 - c], [x0, y0 + c]];
+    var n = V.length, out = [], i;
+    var unit = function (ax, ay) { var L = Math.hypot(ax, ay) || 1; return [ax / L, ay / L]; };
+
+    for (i = 0; i < n; i++) {
+      var v = V[i], p = V[(i - 1 + n) % n], q = V[(i + 1) % n];
+      var din = unit(p[0] - v[0], p[1] - v[1]);   // back along the edge that arrives
+      var dout = unit(q[0] - v[0], q[1] - v[1]);  // forward along the edge that leaves
+      // Never eat more than a third of either neighbouring edge, or two barbs
+      // sharing a short chamfer meet in the middle of it and the run between
+      // them turns inside out.
+      var hin = Math.min(half, Math.hypot(p[0] - v[0], p[1] - v[1]) / 3);
+      var hout = Math.min(half, Math.hypot(q[0] - v[0], q[1] - v[1]) / 3);
+      // The inward bisector is where the two edge directions add; the barb goes
+      // the other way. If they cancel the corner is not a corner, so fall back
+      // to straight out from the centre.
+      var sx = din[0] + dout[0], sy = din[1] + dout[1];
+      var away = Math.hypot(sx, sy) < 1e-6
+        ? unit(v[0] - cx, v[1] - cy)
+        : unit(-sx, -sy);
+      out.push(sharp(v[0] + din[0] * hin, v[1] + din[1] * hin));
+      out.push(sharp(v[0] + away[0] * len, v[1] + away[1] * len));
+      out.push(sharp(v[0] + dout[0] * hout, v[1] + dout[1] * hout));
+    }
+    return out;
+  }
+
   // ── Cloud ─────────────────────────────────────────────
   // Puffs around an ellipse. Everything irregular about it is driven by a
   // seeded PRNG, so a seed always redraws the identical cloud (preview, PSD,
@@ -1775,6 +1812,20 @@
     roundedRect: { label: '둥근사각형',  build: function (b) { return roundedRectKnots(b.x0, b.y0, b.x1, b.y1, Math.min(b.w, b.h) * 0.18); } },
     pill:        { label: '알약형',      build: function (b) { return roundedRectKnots(b.x0, b.y0, b.x1, b.y1, b.h / 2); } },
     angular:     { label: '각진 상자',   build: function (b) { return angularKnots(b.x0, b.y0, b.x1, b.y1, Math.min(b.w, b.h) * 0.22); } },
+    barbed:      { label: '방송', defaultTail: '',
+                   params: [
+                     { key: 'chamfer', label: '모서리 깎기', min: 5, max: 40, step: 1, def: 13, unit: '%' },
+                     { key: 'barb',    label: '가시 길이',   min: 0, max: 30, step: 1, def: 14, unit: '%' },
+                     { key: 'width',   label: '가시 굵기',   min: 1, max: 20, step: 1, def: 6, unit: '%' }
+                   ],
+                   // All three are shares of the short side, so the barbs grow
+                   // and shrink with the box instead of staying the size they
+                   // were set at while it changes around them.
+                   build: function (b) {
+                     var p = paramsOf('barbed'), s = Math.min(b.w, b.h);
+                     return barbedKnots(b.x0, b.y0, b.x1, b.y1,
+                       s * (p.chamfer / 100), s * (p.barb / 100), s * (p.width / 100) / 2);
+                   } },
     polygon:     { label: '다각형',      seeded: true, damped: true, count: { min: 5, max: 16, def: 7, label: '변 개수' }, vary: { def: 45, label: '변 길이 편차' }, build: function (b, d) { return polygonKnots(b.cx, b.cy, b.rx, b.ry, count('polygon'), varyOf('polygon') * (d == null ? 1 : d), state.seed); } },
     thought:     { label: '생각',        seeded: true, damped: true, softJoin: true, count: { min: 6, max: 24, def: 12, label: '봉우리 개수' }, build: function (b, d) { return cloudKnots(b.cx, b.cy, b.rx * 0.84, b.ry * 0.80, count('thought'), state.seed, d); } },
     // The cloud's machinery with the puffs turned right down and the base curve
@@ -2008,13 +2059,16 @@
 
   // ══ State ═════════════════════════════════════════════
 
-  var state = { shape: 'ellipse', tail: 'bottom-left', dashed: false, fill: '#ffffff',
+  var state = { shape: 'ellipse', dashed: false, fill: '#ffffff',
                 stroke: '#000000', w: 560, h: 320, sw: 3, pad: 40,
-                counts: {}, varies: {}, heights: {}, params: {},
+                counts: {}, varies: {}, heights: {}, params: {}, tails: {},
                 seed: (Math.random() * 0x7fffffff) | 0 };
 
   // each shape remembers its own settings, so switching back and forth keeps them
   Object.keys(SHAPES).forEach(function (k) {
+    // A box that is all corners has nowhere for a tail to leave from without
+    // eating one, so that shape starts without.
+    state.tails[k] = SHAPES[k].defaultTail == null ? 'bottom-left' : SHAPES[k].defaultTail;
     if (SHAPES[k].count) state.counts[k] = SHAPES[k].count.def;
     if (SHAPES[k].vary) state.varies[k] = SHAPES[k].vary.def;
     if (SHAPES[k].height) state.heights[k] = SHAPES[k].height.def;
@@ -2024,7 +2078,7 @@
   var current = null;   // { subpaths, dashed, width, height }
 
   function compose() {
-    var built = buildBubble(state.shape, { x: 0, y: 0, w: state.w, h: state.h }, state.tail);
+    var built = buildBubble(state.shape, { x: 0, y: 0, w: state.w, h: state.h }, state.tails[state.shape]);
     var box = bbox(built.subpaths);
     var m = state.pad + state.sw / 2 + 1;    // stroke straddles the path
     return {
@@ -2182,7 +2236,8 @@
   // ══ Export ════════════════════════════════════════════
 
   function filename(ext) {
-    return 'bubble-' + state.shape + (state.tail ? '-' + state.tail : '') + '.' + ext;
+    var t = state.tails[state.shape];
+    return 'bubble-' + state.shape + (t ? '-' + t : '') + '.' + ext;
   }
 
   function save(blob, name) {
@@ -2301,34 +2356,54 @@
 
   // ══ UI ════════════════════════════════════════════════
 
-  function buildChips(host, entries, key, allowNone) {
+  // A chip group reads and writes one setting. `perShape` hangs that setting off
+  // the shape rather than off the state as a whole, the way the sliders already
+  // do, so a shape that wants no tail can say so and still leave the others
+  // theirs. Which also means picking a shape changes what the tail row should
+  // be showing, so every click re-reads every group rather than just lighting
+  // the button that was pressed.
+  var CHIP_GROUPS = [];
+
+  function buildChips(host, entries, key, allowNone, perShape) {
     var list = allowNone ? [['', '없음']].concat(entries) : entries;
+    var read = perShape ? function () { return state[key + 's'][state.shape]; }
+                        : function () { return state[key]; };
+    var write = perShape ? function (v) { state[key + 's'][state.shape] = v; }
+                         : function (v) { state[key] = v; };
+    CHIP_GROUPS.push({ host: host, list: list, read: read });
     list.forEach(function (e) {
       var b = document.createElement('button');
       b.className = 'chip';
       b.type = 'button';
       b.textContent = e[1];
-      b.setAttribute('aria-pressed', String(state[key] === e[0]));
       b.addEventListener('click', function () {
-        state[key] = e[0];
-        Array.prototype.forEach.call(host.children, function (c) {
-          c.setAttribute('aria-pressed', String(c === b));
-        });
+        write(e[0]);
+        syncChips();
         render();
       });
       host.appendChild(b);
     });
   }
 
+  function syncChips() {
+    CHIP_GROUPS.forEach(function (g) {
+      var now = g.read();
+      Array.prototype.forEach.call(g.host.children, function (c, i) {
+        c.setAttribute('aria-pressed', String(g.list[i][0] === now));
+      });
+    });
+  }
+
   buildChips(document.getElementById('shapes'),
     Object.keys(SHAPES).map(function (k) { return [k, SHAPES[k].label]; }), 'shape', false);
   buildChips(document.getElementById('tails'),
-    Object.keys(TAIL_ANGLE).map(function (k) { return [k, TAIL_LABEL[k]]; }), 'tail', true);
+    Object.keys(TAIL_ANGLE).map(function (k) { return [k, TAIL_LABEL[k]]; }), 'tail', true, true);
   // The chips carry their value through as-is, so booleans work like the string
   // keys above. Dashes used to be a shape of their own - an ellipse that was
   // only an ellipse - which meant no other bubble could whisper.
   buildChips(document.getElementById('strokes'),
     [[false, '실선'], [true, '점선']], 'dashed', false);
+  syncChips();
 
   document.getElementById('hgt').addEventListener('input', function (e) {
     state.heights[state.shape] = Number(e.target.value);
