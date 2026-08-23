@@ -1118,6 +1118,82 @@
     return out;
   }
 
+  // A flash: no outline at all, just slivers pointing at a clear ellipse in the
+  // middle. Each is its own closed path - a needle with a point at either end
+  // and its width at `waist` of the way along - so the gaps between them are
+  // simply where nothing was drawn, rather than something cut out.
+  //
+  // Both ends ride on ellipses concentric with the box, so a wide flash keeps
+  // its slivers pointing at the middle instead of splaying.
+  // Returns the slivers and, separately, the clear middle they point at. That
+  // one is filled in the fill colour and never stroked - it is the paper the
+  // flash is drawn around, not part of the drawing - so it cannot travel in the
+  // same set as the slivers, which take the stroke colour.
+  function flashKnots(cx, cy, rx, ry, seed, opts) {
+    opts = opts || {};
+    var lines = Math.max(6, Math.round(opts.lines || 70));
+    var inner = opts.inner == null ? 0.56 : opts.inner;
+    var vary = opts.vary || 0;
+    var half = Math.max(0.4, (opts.width || 6) / 2);
+    var waist = opts.waist == null ? 0.22 : opts.waist;
+    var rand = rng(seed);
+    var out = [], sumReach = 0;
+
+    for (var i = 0; i < lines; i++) {
+      // Even spacing with a nudge, not a free-for-all: left to chance alone the
+      // gaps clump, and a flash reads as a mistake rather than a burst.
+      var t = (i + (rand() * 2 - 1) * 0.45) / lines * TAU;
+      var cos = Math.cos(t), sin = Math.sin(t);
+      // The deviation eats into the length, not into the radius. Taken off the
+      // radius it is measured from the centre, so raising the middle leaves the
+      // shortest slivers with nothing left to be - at a wide enough middle they
+      // collapse to points.
+      var reach = inner + (1 - inner) * (1 - vary * rand());
+      sumReach += reach;
+      var ax = cx + rx * inner * cos, ay = cy + ry * inner * sin;
+      var bx = cx + rx * reach * cos, by = cy + ry * reach * sin;
+
+      // Across the sliver, not across the box: the perpendicular is taken from
+      // the sliver's own direction so it keeps its width wherever it points.
+      var dx = bx - ax, dy = by - ay;
+      var L = Math.hypot(dx, dy) || 1;
+      var ux = dx / L, uy = dy / L;
+      var px = -uy * half, py = ux * half;
+      var mx = ax + dx * waist, my = ay + dy * waist;
+
+      // Four straight sides make a rhombus, and the widest part of it is a
+      // corner. Handles along the sliver's own axis at the two flanks round
+      // that into a swell instead, while the ends keep their handles on top of
+      // themselves and so stay points. Held to the shorter half so the swell
+      // cannot reach past either tip.
+      var k = Math.min(waist, 1 - waist) * L * 0.55;
+      var flank = function (x, y, s) {
+        return { x: x, y: y,
+                 ix: x - ux * k * s, iy: y - uy * k * s,
+                 ox: x + ux * k * s, oy: y + uy * k * s, linked: true };
+      };
+
+      out.push([sharp(ax, ay), flank(mx + px, my + py, 1),
+                sharp(bx, by), flank(mx - px, my - py, -1)]);
+    }
+
+    // Out to half way along the slivers rather than to the point they start
+    // from, so what shows of each is its outer half tapering to a tip and the
+    // blunt inner end is buried. Overlapping also spares the seam: two fills
+    // that meet exactly edge to edge show the join as a hairline.
+    //
+    // Half way along the ones actually drawn, not half way to where the longest
+    // could reach. The deviation makes most of them shorter than that, so the
+    // second measure buries well past their middles.
+    // The last 5 per cent is taken back off deliberately. Sitting exactly on the
+    // average midpoint, the ellipse buries the inner half of every sliver
+    // shorter than average and the burst loses its depth; a shade inside that
+    // and the short ones keep a little of theirs.
+    var reachAvg = out.length ? sumReach / out.length : 1;
+    var mid = (inner + (reachAvg - inner) * (opts.coreReach == null ? 0.5 : opts.coreReach)) * 0.95;
+    return { core: [ellipseKnots(cx, cy, rx * mid, ry * mid)], lines: out };
+  }
+
   // ── Cloud ─────────────────────────────────────────────
   // Puffs around an ellipse. Everything irregular about it is driven by a
   // seeded PRNG, so a seed always redraws the identical cloud (preview, PSD,
@@ -1812,6 +1888,28 @@
     roundedRect: { label: '둥근사각형',  build: function (b) { return roundedRectKnots(b.x0, b.y0, b.x1, b.y1, Math.min(b.w, b.h) * 0.18); } },
     pill:        { label: '알약형',      build: function (b) { return roundedRectKnots(b.x0, b.y0, b.x1, b.y1, b.h / 2); } },
     angular:     { label: '각진 상자',   build: function (b) { return angularKnots(b.x0, b.y0, b.x1, b.y1, Math.min(b.w, b.h) * 0.22); } },
+    // A sliver's point is a couple of degrees across, and the mitre limit turns
+    // anything keener than about 10 into a flat cut. At the usual 12 every one
+    // of these ends is chopped square.
+    flash:       { label: '플래시', multi: true, seeded: true, defaultTail: '', miterLimit: 90,
+                   fillFromStroke: true, defaultStroke: 0,
+                   count: { min: 20, max: 200, def: 96, label: '선 개수' },
+                   vary:  { def: 38, label: '선 길이 편차' },
+                   params: [
+                     { key: 'inner', label: '가운데 크기', min: 10, max: 85, step: 1, def: 62, unit: '%' },
+                     { key: 'width', label: '선 굵기',     min: 1, max: 15, step: 1, def: 4, unit: ' px' },
+                     { key: 'waist', label: '굵은 지점',   min: 0, max: 100, step: 1, def: 50, unit: '%' }
+                   ],
+                   build: function (b) {
+                     var p = paramsOf('flash');
+                     return flashKnots(b.cx, b.cy, b.rx, b.ry, state.seed, {
+                       lines: count('flash'),
+                       inner: p.inner / 100,
+                       vary: state.varies.flash / 100,
+                       width: p.width,
+                       waist: p.waist / 100
+                     });
+                   } },
     barbed:      { label: '방송', defaultTail: '',
                    params: [
                      { key: 'chamfer', label: '모서리 깎기', min: 5, max: 40, step: 1, def: 13, unit: '%' },
@@ -1909,6 +2007,11 @@
     var shape = SHAPES[key];
 
     function assemble(body, damp) {
+      // A flash is not an outline with things done to it - it is a scatter of
+      // separate slivers around a clear middle, and its builder hands back both
+      // sets. `core` is filled and never stroked; `subpaths` is everything the
+      // stroke colour applies to.
+      if (shape.multi) return { subpaths: body.lines, core: body.core, dashed: state.dashed };
       if (!tailDir) return { subpaths: [body], dashed: state.dashed };
       if (shape.stretchTail) {
         // Find which spike the tail will grow from, then build the shape again
@@ -2030,6 +2133,13 @@
   // ══ Painting ══════════════════════════════════════════
 
   function paint(ctx, subpaths, o) {
+    // The clear middle goes down first and unstroked, so the slivers land on
+    // top of it and the stroke colour never touches it.
+    (o.core || []).forEach(function (knots) {
+      pathToCanvas(ctx, knots);
+      ctx.fillStyle = o.coreFill || o.fill;
+      ctx.fill();
+    });
     subpaths.forEach(function (knots) {
       pathToCanvas(ctx, knots);
       ctx.fillStyle = o.fill;
@@ -2061,7 +2171,7 @@
 
   var state = { shape: 'ellipse', dashed: false, fill: '#ffffff',
                 stroke: '#000000', w: 560, h: 320, sw: 3, pad: 40,
-                counts: {}, varies: {}, heights: {}, params: {}, tails: {},
+                counts: {}, varies: {}, heights: {}, params: {}, tails: {}, sws: {},
                 seed: (Math.random() * 0x7fffffff) | 0 };
 
   // each shape remembers its own settings, so switching back and forth keeps them
@@ -2069,20 +2179,26 @@
     // A box that is all corners has nowhere for a tail to leave from without
     // eating one, so that shape starts without.
     state.tails[k] = SHAPES[k].defaultTail == null ? 'bottom-left' : SHAPES[k].defaultTail;
+    // A flash is filled, not outlined - a stroke round every sliver only
+    // thickens it and rounds off the points.
+    state.sws[k] = SHAPES[k].defaultStroke == null ? 3 : SHAPES[k].defaultStroke;
     if (SHAPES[k].count) state.counts[k] = SHAPES[k].count.def;
     if (SHAPES[k].vary) state.varies[k] = SHAPES[k].vary.def;
     if (SHAPES[k].height) state.heights[k] = SHAPES[k].height.def;
     state.params[k] = {};
     (SHAPES[k].params || []).forEach(function (p) { state.params[k][p.key] = p.def; });
   });
-  var current = null;   // { subpaths, dashed, width, height }
+  var current = null;   // { subpaths, core, dashed, width, height }
 
   function compose() {
     var built = buildBubble(state.shape, { x: 0, y: 0, w: state.w, h: state.h }, state.tails[state.shape]);
+    // The middle sits inside the slivers, so it never decides the bounds; it
+    // still has to move with them.
     var box = bbox(built.subpaths);
-    var m = state.pad + state.sw / 2 + 1;    // stroke straddles the path
+    var m = state.pad + strokeW() / 2 + 1;    // stroke straddles the path
     return {
       subpaths: translate(built.subpaths, m - box.x, m - box.y),
+      core: built.core ? translate(built.core, m - box.x, m - box.y) : null,
       dashed: built.dashed,
       join: SHAPES[state.shape].softJoin ? 'round' : 'miter',
       miter: SHAPES[state.shape].miterLimit || MITER_LIMIT,
@@ -2166,6 +2282,10 @@
 
   function render() {
     var shape = SHAPES[state.shape], cfg = shape.count;
+    // Stroke width belongs to the shape now, so the slider has to be told what
+    // this one's is every time the shape changes.
+    document.getElementById('sw').value = strokeW();
+    document.getElementById('swv').textContent = strokeW();
     // For most shapes these two are the box the outline fills, so "가로/세로"
     // says it. Where the box is one named part of the shape rather than the
     // whole of it, the shape renames them to say which part.
@@ -2221,8 +2341,9 @@
     var ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, current.width, current.height);
     paint(ctx, current.subpaths, {
-      fill: state.fill, stroke: state.stroke,
-      strokeWidth: state.sw, dashed: current.dashed, join: current.join, miter: current.miter
+      core: current.core, coreFill: state.fill,
+      fill: fillColor(), stroke: state.stroke,
+      strokeWidth: strokeW(), dashed: current.dashed, join: current.join, miter: current.miter
     });
     var anchors = current.subpaths.reduce(function (n, k) { return n + k.length; }, 0);
     meta.textContent = current.width + ' × ' + current.height + ' px · ' +
@@ -2249,6 +2370,16 @@
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
   }
 
+  // A flash has no inside to speak of - each sliver is barely wider than the
+  // line drawn round it - so leaving the two colours separate only ever showed
+  // a pale seam down the middle of a thick one. The shape asks for one colour
+  // and gets the stroke's; its fill swatch has nothing to say.
+  function fillColor() {
+    return SHAPES[state.shape].fillFromStroke ? state.stroke : state.fill;
+  }
+
+  function strokeW() { return state.sws[state.shape]; }
+
   function hexToRgb(hex) {
     var h = hex.replace('#', '');
     return { r: parseInt(h.slice(0, 2), 16), g: parseInt(h.slice(2, 4), 16), b: parseInt(h.slice(4, 6), 16) };
@@ -2262,8 +2393,9 @@
       layer.height = current.height;
       var lctx = layer.getContext('2d');
       paint(lctx, current.subpaths, {
-        fill: state.fill, stroke: state.stroke,
-        strokeWidth: state.sw, dashed: current.dashed, join: current.join, miter: current.miter
+        core: current.core, coreFill: state.fill,
+        fill: fillColor(), stroke: state.stroke,
+        strokeWidth: strokeW(), dashed: current.dashed, join: current.join, miter: current.miter
       });
       var img = lctx.getImageData(0, 0, current.width, current.height);
 
@@ -2271,7 +2403,7 @@
         name: 'Speech Bubble',
         top: 0, left: 0, bottom: current.height, right: current.width,
         imageData: img,
-        vectorFill: { type: 'color', color: hexToRgb(state.fill) },
+        vectorFill: { type: 'color', color: hexToRgb(fillColor()) },
         vectorMask: {
           paths: current.subpaths.map(function (knots) {
             // non-zero to match what canvas and SVG already do by default. The
@@ -2287,11 +2419,11 @@
       // stored bitmap, so the outline has to be a real vector stroke - painting
       // it into the pixels above is not enough. Adding vectorStroke also moves
       // the fill from the SoCo key to vscg, which is what Photoshop expects.
-      if (state.sw > 0) {
+      if (strokeW() > 0) {
         layer.vectorStroke = {
           strokeEnabled: true,
           fillEnabled: true,
-          lineWidth: { units: 'Pixels', value: state.sw },
+          lineWidth: { units: 'Pixels', value: strokeW() },
           lineAlignment: 'center',      // matches how canvas straddles the path
           lineCapType: 'round',
           lineJoinType: current.join,
@@ -2308,11 +2440,28 @@
         };
       }
 
+      // The clear middle is a second shape layer, under the slivers and with no
+      // stroke of its own. One layer cannot hold two fills, and this one is a
+      // different colour from what surrounds it.
+      var children = [layer];
+      if (current.core && current.core.length) {
+        children.unshift({
+          name: 'Center',
+          top: 0, left: 0, bottom: current.height, right: current.width,
+          vectorFill: { type: 'color', color: hexToRgb(state.fill) },
+          vectorMask: {
+            paths: current.core.map(function (knots) {
+              return { open: false, fillRule: 'non-zero', operation: 'combine', knots: pathToPSD(knots) };
+            })
+          }
+        });
+      }
+
       var psd = {
         width: current.width,
         height: current.height,
         imageData: img,
-        children: [layer]
+        children: children
       };
       save(new Blob([window.agPsd.writePsd(psd)], { type: 'image/vnd.adobe.photoshop' }), filename('psd'));
       say('PSD 저장 완료 — 포토샵에서 열면 셰이프 레이어로 편집됩니다.');
@@ -2322,12 +2471,16 @@
   });
 
   document.getElementById('dl-svg').addEventListener('click', function () {
-    var dash = current.dashed ? ' stroke-dasharray="' + (state.sw * 3) + ' ' + (state.sw * 2.2) + '"' : '';
-    var paths = current.subpaths.map(function (knots) {
-      return '  <path d="' + pathToSVG(knots) + '" fill="' + state.fill + '"' +
-             (state.sw > 0 ? ' stroke="' + state.stroke + '" stroke-width="' + state.sw +
+    var dash = current.dashed ? ' stroke-dasharray="' + (strokeW() * 3) + ' ' + (strokeW() * 2.2) + '"' : '';
+    // The middle first, so it sits under the rest, and without a stroke.
+    var core = (current.core || []).map(function (knots) {
+      return '  <path d="' + pathToSVG(knots) + '" fill="' + state.fill + '"/>';
+    });
+    var paths = core.concat(current.subpaths.map(function (knots) {
+      return '  <path d="' + pathToSVG(knots) + '" fill="' + fillColor() + '"' +
+             (strokeW() > 0 ? ' stroke="' + state.stroke + '" stroke-width="' + strokeW() +
               '" stroke-linejoin="' + current.join + '" stroke-miterlimit="' + current.miter + '"' + dash : '') + '/>';
-    }).join('\n');
+    })).join('\n');
     var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + current.width +
               '" height="' + current.height + '" viewBox="0 0 ' + current.width + ' ' +
               current.height + '">\n' + paths + '\n</svg>\n';
@@ -2423,13 +2576,19 @@
     render();
   });
 
-  [['w', 'wv'], ['h', 'hv'], ['sw', 'swv'], ['pad', 'padv']].forEach(function (pair) {
+  [['w', 'wv'], ['h', 'hv'], ['pad', 'padv']].forEach(function (pair) {
     var input = document.getElementById(pair[0]), out = document.getElementById(pair[1]);
     input.addEventListener('input', function () {
       state[pair[0]] = Number(input.value);
       out.textContent = input.value;
       render();
     });
+  });
+
+  document.getElementById('sw').addEventListener('input', function (e) {
+    state.sws[state.shape] = Number(e.target.value);
+    document.getElementById('swv').textContent = e.target.value;
+    render();
   });
 
   document.getElementById('reseed').addEventListener('click', function () {
