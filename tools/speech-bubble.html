@@ -1781,16 +1781,16 @@
     // squared off: an outline that wanders rather than billows.
     wavy:        { label: '물결',        seeded: true, damped: true, softJoin: true,
                    tail:   { curved: true, width: 0.29 },
-                   vary:   { def: 53, label: '물결 크기 편차' },
+                   vary:   { def: 12, label: '물결 크기 편차' },
                    params: [
                      // Past about 40 against the default wavelength the crests
                      // reach across the troughs either side and the outline
                      // knots itself. The damping catches it, but the shape it
                      // hands back is not one anyone asked for, so the slider
                      // stops short of there.
-                     { key: 'depth',      label: '물결 깊이', min: 2, max: 30, step: 1, def: 11, unit: ' px' },
-                     { key: 'wavelength', label: '물결 파장', min: 30, max: 240, step: 5, def: 145, unit: ' px' },
-                     { key: 'corner',     label: '모서리',    min: 0, max: 100, def: 20, unit: '%' }
+                     { key: 'depth',      label: '물결 깊이', min: 2, max: 30, step: 1, def: 10, unit: ' px' },
+                     { key: 'wavelength', label: '물결 파장', min: 30, max: 240, step: 5, def: 130, unit: ' px' },
+                     { key: 'corner',     label: '모서리',    min: 0, max: 100, def: 26, unit: '%' }
                    ],
                    build: function (b, d) {
                      var p = paramsOf('wavy');
