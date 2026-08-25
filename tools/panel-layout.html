@@ -761,11 +761,19 @@
   //
   // Reports which edges came back pointing the wrong way rather than deciding
   // what that means; `insetPoly` does that.
-  function insetPass(poly, d) {
-    var n = poly.pts.length;
+  //
+  // `dropped` names edges to leave out of the construction. Every other edge
+  // still contributes its own line, so leaving one out only removes that edge -
+  // it never moves a neighbour.
+  function insetPass(poly, d, dropped) {
+    var n = poly.pts.length, i;
     if (n < 3) return null;
 
-    var lines = [], i;
+    var live = [];
+    for (i = 0; i < n; i++) if (!(dropped && dropped[i])) live.push(i);
+    if (live.length < 3) return null;
+
+    var lines = [];
     for (i = 0; i < n; i++) {
       var a = poly.pts[i], b = poly.pts[(i + 1) % n];
       var ex = b[0] - a[0], ey = b[1] - a[1], L = Math.hypot(ex, ey);
@@ -776,14 +784,17 @@
     }
 
     var pts = [], flags = [], along = [], src = [];
-    for (i = 0; i < n; i++) {
-      var p = lines[(i - 1 + n) % n], q = lines[i];
+    for (var k = 0; k < live.length; k++) {
+      // The edge before this one is the last surviving edge, not literally i-1.
+      var pi = live[(k - 1 + live.length) % live.length];
+      i = live[k];
+      var p = lines[pi], q = lines[i];
       var den = p.dx * q.dy - p.dy * q.dx;
       if (Math.abs(den) < 1e-9) {
         // Two edges of one straight line, meeting where a neighbouring panel
         // butts into it. That is not a corner of this panel. Only a real step,
         // where the two sides pull back by different amounts, earns a vertex.
-        if (poly.inner[(i - 1 + n) % n] === poly.inner[i]) continue;
+        if (poly.inner[pi] === poly.inner[i]) continue;
         pts.push([q.px, q.py]);
       } else {
         var t = ((q.px - p.px) * q.dy - (q.py - p.py) * q.dx) / den;
@@ -811,17 +822,68 @@
   // swallowed edge is dropped and the corners worked out again. A panel that
   // loses every edge this way really was thinner than the gutter, and vanishing
   // is what the caller already knows how to report.
+  //
+  // The edge is dropped from the construction, never from the panel. Cutting a
+  // vertex out of the outline takes a good neighbour's direction away with it:
+  // remove the corner between edges 0 and 1 and edge 0 stops running where it
+  // ran, striking off towards wherever edge 2 begins. That reshapes the panel
+  // before the next round measures it, and a wedge with room to spare comes
+  // back as a sliver too thin for the gutter and disappears.
+  //
+  // When a round reports more than one, the shortest edge goes. It is the one
+  // the gutter can actually swallow; a long border reported alongside it is
+  // usually innocent, dragged into the report by a corner that ran away at the
+  // tip of a spike. Dropping the long one instead takes a real side of the
+  // panel out of the reckoning, and the outline is free to wander across it.
+  //
+  // But guessing from the reversals alone is guessing. Ask each edge outright
+  // first: pull it back by the gutter and see whether any of it still lies in
+  // the panel and still keeps its distance from every other cut edge. A needle
+  // has two sides that eat each other, and both come back with nothing. Edges
+  // answered that way are gone before a single corner is built, which leaves
+  // the reversals to mean what they were meant to mean.
+  function deadEdges(poly, d) {
+    var n = poly.pts.length, dead = {}, i, j, k;
+    for (i = 0; i < n; i++) {
+      if (!poly.inner[i]) continue;
+      var a = poly.pts[i], b = poly.pts[(i + 1) % n];
+      var ex = b[0] - a[0], ey = b[1] - a[1], L = Math.hypot(ex, ey);
+      if (L < 1e-9) { dead[i] = true; continue; }
+      var ux = ex / L, uy = ey / L, alive = false;
+      for (k = 0; k <= DEAD_STEPS && !alive; k++) {
+        var t = k / DEAD_STEPS;
+        var x = a[0] + ex * t - uy * d, y = a[1] + ey * t + ux * d;
+        if (!pointInPoly(poly, x, y)) continue;
+        var clear = true;
+        for (j = 0; j < n && clear; j++) {
+          if (j === i || !poly.inner[j]) continue;
+          if (distToSeg(x, y, poly.pts[j], poly.pts[(j + 1) % n]) < d - 0.5) clear = false;
+        }
+        if (clear) alive = true;
+      }
+      if (!alive) dead[i] = true;
+    }
+    return dead;
+  }
+  var DEAD_STEPS = 24;
+
   function insetPoly(poly, d) {
     if (d <= 0) return poly;
     var gone = { pts: [], inner: [] };
-    var pts = poly.pts.slice(), inner = poly.inner.slice();
-    for (var guard = pts.length + 1; guard > 0; guard--) {
-      var got = insetPass({ pts: pts, inner: inner }, d);
+    var n = poly.pts.length, dropped = deadEdges(poly, d);
+    function edgeLen(i) {
+      var a = poly.pts[i], b = poly.pts[(i + 1) % n];
+      return Math.hypot(b[0] - a[0], b[1] - a[1]);
+    }
+    for (var guard = n + 1; guard > 0; guard--) {
+      var got = insetPass(poly, d, dropped);
       if (!got) return gone;
       if (!got.back.length) return polyArea(got.poly) < 1 ? gone : got.poly;
-      pts.splice(got.back[0], 1);
-      inner.splice(got.back[0], 1);
-      if (pts.length < 3) return gone;
+      var worst = got.back[0];
+      for (var k = 1; k < got.back.length; k++) {
+        if (edgeLen(got.back[k]) < edgeLen(worst)) worst = got.back[k];
+      }
+      dropped[worst] = true;
     }
     return gone;
   }
