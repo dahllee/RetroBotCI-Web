@@ -3277,17 +3277,16 @@
   // on press - there is no such thing as a transparent sheet of paper. It sits
   // at the bottom of the stack, under every panel, so anything meant to run to
   // the edge of the page has a layer to be drawn on that no mask will crop.
-  function pageGround(doc) {
-    var c = document.createElement('canvas');
-    c.width = doc.w;
-    c.height = doc.h;
-    var g = c.getContext('2d');
-    g.fillStyle = state.fill;
-    g.fillRect(0, 0, doc.w, doc.h);
+  //
+  // A fill layer, like the paper inside each panel. A full-page rectangle of
+  // white is the largest thing in the file and says nothing a single colour
+  // does not; this way the page can also be resized in Photoshop without a
+  // sheet of paper that stops short of the new edge.
+  function pageGround() {
     return {
       name: '페이지 바탕',
-      top: 0, left: 0, bottom: doc.h, right: doc.w,
-      imageData: g.getImageData(0, 0, doc.w, doc.h)
+      top: 0, left: 0, bottom: 0, right: 0,
+      vectorFill: { type: 'color', color: hexToRgb(state.fill) }
     };
   }
 
@@ -3310,14 +3309,30 @@
       paintPage(fctx);
       var flatData = fctx.getImageData(0, 0, doc.w, doc.h);
 
-      // Each panel becomes a FOLDER carrying the vector mask, with the border as
-      // a layer style on that same folder. The point is that there is only ever
-      // one copy of the path: editing the mask in Photoshop moves the crop and
-      // the border together. A separate border shape would have to be edited
-      // twice per panel, which is the whole reason not to use one.
+      // Each panel is a FOLDER holding a SHAPE LAYER and, clipped to it, the
+      // layer to draw on. The shape layer is the panel: it carries the path,
+      // the paper colour and the border, all three on one object, so there is
+      // only ever one path to edit.
+      //
+      // The clip is what crops the artwork, and a clip only holds for the layer
+      // it was put on: paste, and Photoshop makes a new layer above with no clip
+      // of its own, which has to be clipped by hand (Ctrl+Alt+G). A folder
+      // around the artwork would have covered every layer at once, but Photoshop
+      // will not clip a folder - the menu item is greyed out - so the cost
+      // stands. It is the cheaper of the two on offer: a border drawn as a layer
+      // style crops everything for free but rounds the inward corner of a bent
+      // panel, and that ends up on the printed page.
+      //
+      // The border is a vector stroke rather than a layer style, because a layer
+      // style has no corner setting: it grows the edge outward with a round
+      // brush, so the inward corner of a c-shaped panel always came back curved,
+      // and there was nothing in the dialog to say otherwise. A vector stroke
+      // has a join, and it is set to miter.
       var folders = drawn.map(function (l, i) {
-        // Bound the contents to the panel. A full-page buffer per layer would
-        // run to hundreds of megabytes on an A4 page at 300dpi.
+        // Bound the drawing layer to the panel. A full-page buffer per layer
+        // would run to hundreds of megabytes on an A4 page at 300dpi. Only the
+        // drawing needs bounds; the shape layer has no pixels at all, which is
+        // what lets a point be dragged outside the panel and find paper there.
         var b = knotsBBox(l.knots);
         var left = clamp(Math.floor(b.minX) - 1, 0, doc.w);
         var top = clamp(Math.floor(b.minY) - 1, 0, doc.h);
@@ -3326,50 +3341,53 @@
         var lw = right - left, lh = bottom - top;
         if (lw < 1 || lh < 1) return null;
 
-        // The paper. Not decoration: a layer style traces the folder's alpha, so
-        // an empty folder would have no edge to draw a border along - and once
-        // drawing started the border would follow the brush strokes instead.
-        var paper = document.createElement('canvas');
-        paper.width = lw;
-        paper.height = lh;
-        var pctx = paper.getContext('2d');
-        pctx.fillStyle = l.style.fill;
-        pctx.fillRect(0, 0, lw, lh);
-
         var blank = document.createElement('canvas');
         blank.width = lw;
         blank.height = lh;
 
-        var folder = {
-          name: '칸 ' + (i + 1),
-          opened: false,
+        var paper = {
+          name: '바탕',
+          top: 0, left: 0, bottom: 0, right: 0,
           vectorMask: {
             paths: [{ open: false, fillRule: 'non-zero', operation: 'combine', knots: pathToPSD(l.knots) }]
           },
+          vectorFill: { type: 'color', color: hexToRgb(l.style.fill) }
+        };
+
+        // Inside alignment, not centre: half a centred stroke would hang over
+        // the panel's edge and into the gutter, and the border would read as
+        // half as thick as it was asked to be.
+        if (l.style.sw > 0) {
+          paper.vectorStroke = {
+            strokeEnabled: true,
+            fillEnabled: true,
+            lineWidth: { value: l.style.sw, units: 'Pixels' },
+            lineDashOffset: { value: 0, units: 'Pixels' },
+            miterLimit: 100,
+            lineCapType: 'butt',
+            lineJoinType: 'miter',
+            lineAlignment: 'inside',
+            scaleLock: false,
+            strokeAdjust: false,
+            lineDashSet: [],
+            blendMode: 'normal',
+            opacity: 1,
+            content: { type: 'color', color: hexToRgb(l.style.stroke) },
+            resolution: state.dpi
+          };
+        }
+
+        return {
+          name: '칸 ' + (i + 1),
+          opened: false,
+          // bottom to top: the panel, then the artwork clipped to it
           children: [
-            { name: '바탕', top: top, left: left, bottom: bottom, right: right,
-              imageData: pctx.getImageData(0, 0, lw, lh) },
+            paper,
             { name: '그림', top: top, left: left, bottom: bottom, right: right,
+              clipping: true,
               imageData: blank.getContext('2d').getImageData(0, 0, lw, lh) }
           ]
         };
-
-        // Inside alignment, not centre: the mask would eat the outer half of a
-        // centred stroke and the border would come out half as thick.
-        if (l.style.sw > 0) {
-          folder.effects = {
-            stroke: [{
-              enabled: true,
-              position: 'inside',
-              fillType: 'color',
-              blendMode: 'normal',
-              opacity: 1,
-              size: { units: 'Pixels', value: l.style.sw },
-              color: hexToRgb(l.style.stroke)
-            }]
-          };
-        }
-        return folder;
       }).filter(Boolean);
 
       // children run bottom to top, so reversing puts 칸 1 at the top of the
@@ -3395,7 +3413,7 @@
           }
         },
         // the paper goes in first, which puts it under everything
-        children: [pageGround(doc)].concat(folders.reverse())
+        children: [pageGround()].concat(folders.reverse())
       };
       save(new Blob([window.agPsd.writePsd(psd)], { type: 'image/vnd.adobe.photoshop' }), filename('psd'));
       say('PSD 저장 완료 — 맨 아래 페이지 바탕, 그 위로 칸마다 폴더 하나씩입니다.');
