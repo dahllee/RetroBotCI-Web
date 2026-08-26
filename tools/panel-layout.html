@@ -2074,8 +2074,13 @@
     }
     applyZoom();
     ctx.clearRect(0, 0, doc.w, doc.h);
-    paintUnderlay(ctx);
     paintPage(ctx);
+    // over the panels, under the handles. A panel is filled solid, so a
+    // reference behind one shows only in the gutters - which is no use for
+    // laying panels over a page someone wants to follow. The furniture stays
+    // on top of it: a trim line or a corner handle lost under a picture is a
+    // handle nobody can catch.
+    paintRef(ctx);
     paintOverlay(ctx);
 
     var anchors = view.panels.reduce(function (n, p) { return n + (p.knots ? p.knots.length : 0); }, 0);
@@ -2107,10 +2112,10 @@
     showPicked();
   }
 
-  // The reference thumbnail, under everything. Called only from render(), never
-  // from paintPage - which is the one path the exports go through, so the
-  // thumbnail cannot leak into a file no matter what is on screen.
-  function paintUnderlay(c) {
+  // The reference thumbnail. Called only from render(), never from paintPage -
+  // which is the one path the exports go through, so the thumbnail cannot leak
+  // into a file no matter what is on screen.
+  function paintRef(c) {
     if (!ref.img || ref.hidden) return;
     var box = refBox();
     c.save();
