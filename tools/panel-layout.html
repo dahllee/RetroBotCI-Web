@@ -586,6 +586,7 @@
              the canvas rather than in a card describing the page. -->
         <span class="hint-sm" id="pickedv"></span>
         <button class="btn btn-ghost btn-sm" id="merge" disabled>합치기</button>
+        <button class="btn btn-ghost btn-sm" id="even-tiers" disabled>단 높이를 같게</button>
         <button class="btn btn-ghost btn-sm" id="undo" disabled>되돌리기</button>
         <button class="btn btn-ghost btn-sm" id="redo" disabled>다시하기</button>
         <span class="hint-sm" id="zoomv"></span>
@@ -1586,6 +1587,66 @@
     return out;
   }
 
+  // ── tiers ───────────────────────────────────
+  // A tier is not a thing the mesh holds; it is what the page looks like when a
+  // level border reaches all the way across it. One that stops short divides two
+  // panels rather than the page, so it starts no tier - and neither does a line
+  // a merge has swallowed, which is right: a panel bridging two tiers has joined
+  // them into one.
+  //
+  // A tilted line is not a tier line either. It has no one height to be made
+  // equal to anything, and the panel above it hangs into the room below, so
+  // there is no honest answer to how tall either side is. The tilt was asked
+  // for; a page that has one simply has fewer tiers to even out.
+  function tierLines(m) {
+    var pr = m.page, out = [];
+    borderRuns(m).forEach(function (run) {
+      if (Math.abs(run.dir[1]) > Math.abs(run.dir[0])) return;
+      var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      run.list.forEach(function (vi) {
+        var p = m.verts[vi];
+        if (p[0] < minX) minX = p[0];
+        if (p[0] > maxX) maxX = p[0];
+        if (p[1] < minY) minY = p[1];
+        if (p[1] > maxY) maxY = p[1];
+      });
+      if (maxY - minY > 0.5) return;                                  // tilted
+      if (minX > pr.x + 0.5 || maxX < pr.x + pr.w - 0.5) return;      // stops short
+      out.push({ run: run, y: (minY + maxY) / 2 });
+    });
+    out.sort(function (a, b) { return a.y - b.y; });
+    return out;
+  }
+
+  // The bands between those lines, top of the page to bottom.
+  function tierBands(m) {
+    var pr = m.page, lines = tierLines(m);
+    var edges = [pr.y].concat(lines.map(function (l) { return l.y; })).concat([pr.y + pr.h]);
+    var bands = [];
+    for (var i = 0; i + 1 < edges.length; i++) {
+      bands.push({ top: edges[i], bottom: edges[i + 1], h: edges[i + 1] - edges[i] });
+    }
+    return { bands: bands, lines: lines };
+  }
+
+  // Which bands the picked panels stand in. Covering most of a band is what
+  // counts as standing in it, not merely reaching into it - a tilted border
+  // inside a band leaves the panel above it hanging a little way past the
+  // panels beside it, and that overhang names no tier of its own.
+  function bandsOf(m, ids) {
+    var got = {}, tb = tierBands(m);
+    ids.forEach(function (id) {
+      var f = faceById(m, id);
+      if (!f) return;
+      var bb = polyBBox({ pts: facePts(m, f) });
+      tb.bands.forEach(function (band, i) {
+        var over = Math.min(bb.y + bb.h, band.bottom) - Math.max(bb.y, band.top);
+        if (over > band.h / 2) got[i] = true;
+      });
+    });
+    return { picked: Object.keys(got).map(Number).sort(function (a, b) { return a - b; }), tb: tb };
+  }
+
   // ══ Presets ═══════════════════════════════════════════
   // Each one is a short sequence of cuts. `at` is relative to the face being
   // cut, so taking one tier off at a time and carrying on with the rest gives
@@ -1763,6 +1824,7 @@
   var zoomOutBtn = document.getElementById('zoom-out');
   var zoomLabel = document.getElementById('zoomv');
   var mergeBtn = document.getElementById('merge');
+  var evenBtn = document.getElementById('even-tiers');
   var pickedOut = document.getElementById('pickedv');
 
   var view = { panels: [], cuts: [], snap: null };
@@ -2715,6 +2777,25 @@
     });
   }
 
+  // The same slide, asked for by arithmetic rather than by a hand: no snapping,
+  // no message, just put this border there. Where each corner lands is worked
+  // out the same way, so nothing the border crosses is bent. Read fresh every
+  // time, since an earlier line may already have moved the crossings.
+  function shiftRun(run, dy) {
+    var from = {}, cross = {};
+    run.list.forEach(function (vi) {
+      from[vi] = mesh.verts[vi].slice();
+      cross[vi] = crossingDir(vi, run.dir);
+    });
+    var a = mesh.verts[run.list[0]];
+    var anchor = [a[0], a[1] + dy];
+    run.list.forEach(function (vi) {
+      var o = from[vi], c = cross[vi];
+      var to = c ? lineCross(anchor, run.dir, o, c) : null;
+      moveVert(mesh, vi, to || [o[0], o[1] + dy]);
+    });
+  }
+
   // A corner in the middle of a border is dragged freely, so it lines up with
   // any other corner rather than with a whole line.
   function snapLoose(vi, p, free) {
@@ -2993,6 +3074,11 @@
     mergeBtn.disabled = picked.length < 2 || !fuseFaces(cloneMesh(mesh), picked);
     mergeBtn.title = picked.length < 2 ? '칸을 둘 이상 선택해주세요'
       : (mergeBtn.disabled ? '이 칸들은 한 덩어리가 되지 않습니다' : '');
+    // Tiers, not panels: two panels side by side stand in one tier and there is
+    // nothing to even out between them.
+    var tiers = bandsOf(mesh, picked).picked.length;
+    evenBtn.disabled = tiers < 2;
+    evenBtn.title = tiers < 2 ? '단을 둘 이상 걸치도록 칸을 선택해주세요' : '';
     showStyle();
   }
 
@@ -3038,6 +3124,47 @@
     showPicked();
     render();
     say('칸 ' + ids.length + '개를 하나로 합쳤습니다.');
+  }
+
+  // Give the picked tiers one height between them. They keep the room they had
+  // altogether and share it out evenly, so the page does not change size and a
+  // tier nobody picked - even one caught between two that were - stays exactly
+  // as tall as it was. Every line below the topmost change carries the running
+  // total, which is what leaves the untouched ones where they are.
+  function doEvenTiers() {
+    var got = bandsOf(mesh, livePicked());
+    var want = got.picked, bands = got.tb.bands, lines = got.tb.lines;
+    if (want.length < 2) return;
+
+    var sum = 0;
+    want.forEach(function (i) { sum += bands[i].h; });
+    var each = sum / want.length;
+    var chosen = {};
+    want.forEach(function (i) { chosen[i] = true; });
+
+    // where each line ends up, once the tiers above it are the heights they
+    // are going to be
+    var at = bands[0].top, moves = [];
+    for (var i = 0; i < bands.length - 1; i++) {
+      at += chosen[i] ? each : bands[i].h;
+      moves.push({ run: lines[i].run, dy: at - lines[i].y });
+    }
+
+    var undoVerts = vertsSnapshot(), undoLoops = loopsSnapshot(), rec = snapshot();
+    moves.forEach(function (mv) { if (Math.abs(mv.dy) > 1e-9) shiftRun(mv.run, mv.dy); });
+    repairMesh(mesh);
+    if (!meshValid(mesh, state.gutter + 24)) {
+      restoreVerts(undoVerts);
+      restoreLoops(undoLoops);
+      render();
+      say('같게 맞추면 칸이 너무 얕아집니다 — 그대로 두었습니다.');
+      return;
+    }
+    keep(rec);
+    forgetHover();
+    showPicked();
+    render();
+    say('단 ' + want.length + '개의 높이를 같게 맞췄습니다.');
   }
 
   function splitPanel(entry, x, y, dir, free) {
@@ -3680,6 +3807,7 @@
   });
 
   mergeBtn.addEventListener('click', doMerge);
+  evenBtn.addEventListener('click', doEvenTiers);
 
   zoomInBtn.addEventListener('click', function () { stepZoom(ZOOM_STEP); });
   zoomOutBtn.addEventListener('click', function () { stepZoom(1 / ZOOM_STEP); });
