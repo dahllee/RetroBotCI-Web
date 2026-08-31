@@ -1056,10 +1056,22 @@
     return [sharp(x0, y0), sharp(x1, y0), sharp(x1, y1), sharp(x0, y1)];
   }
 
-  function roundedRectKnots(x0, y0, x1, y1, r) {
+  // `bulge` bows the four straight runs outward by that many pixels at their
+  // middles.
+  //
+  // One cubic per run cannot do it. The corner arc arrives along the run's own
+  // direction, so meeting it without a kink means the run has to leave along
+  // that direction too - and a cubic whose two controls both lie on the line
+  // through its ends is that line. Lift them off it to get a bulge and the join
+  // to the arc corners.
+  //
+  // So each run gets an anchor at its crown, where the tangent is parallel to
+  // the run again, and becomes two cubics. Every handle then lies along the
+  // run's direction: tangent-continuous at both corners and at the crown.
+  function roundedRectKnots(x0, y0, x1, y1, r, bulge) {
     r = Math.min(r, (x1 - x0) / 2, (y1 - y0) / 2);
     var k = KAPPA * r;
-    return [
+    var out = [
       { x: x0 + r, y: y0, ix: x0 + r - k, iy: y0, ox: x0 + r, oy: y0, linked: false },
       { x: x1 - r, y: y0, ix: x1 - r, iy: y0, ox: x1 - r + k, oy: y0, linked: false },
       { x: x1, y: y0 + r, ix: x1, iy: y0 + r - k, ox: x1, oy: y0 + r, linked: false },
@@ -1069,6 +1081,99 @@
       { x: x0, y: y1 - r, ix: x0, iy: y1 - r + k, ox: x0, oy: y1 - r, linked: false },
       { x: x0, y: y0 + r, ix: x0, iy: y0 + r, ox: x0, oy: y0 + r - k, linked: false }
     ];
+
+    return bulge > 0 ? bulgedRectKnots(x0, y0, x1, y1, r, bulge) : out;
+  }
+
+  // A rounded box whose sides bow outward, built as eight arcs that are all
+  // tangent to one another: four corners of radius r, four sides of a much
+  // larger radius chosen so each bows out by `d` at its middle.
+  //
+  // Bezier handles alone will not do this. A corner arc arrives running
+  // parallel to its side, so a side that leaves along that direction and comes
+  // back to it has to turn one way and then the other - the hollow either side
+  // of the crown. Two circles that touch have one tangent between them and only
+  // one direction of turn, so there is no hollow to have.
+  //
+  // Where the two touch falls out of the tangency itself: for a corner circle
+  // at distance `a` from the side's midline, the side radius that reaches out
+  // by d is r + (a*a + d*d) / 2d, and the two centres are then exactly R - r
+  // apart.
+  function bulgedRectKnots(x0, y0, x1, y1, r, d) {
+    r = Math.min(r, (x1 - x0) / 2, (y1 - y0) / 2);
+    var cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+
+    var ah = (x1 - x0) / 2 - r, av = (y1 - y0) / 2 - r;
+    // Nothing to bow. With the corners taking the whole of a side there is no
+    // run left to bulge, and the arithmetic below divides by what is not there.
+    if (ah < 1 || av < 1) return roundedRectKnots(x0, y0, x1, y1, r);
+
+    // A side cannot bow out by more than its own run can carry: past about half
+    // of it the circle needed grows larger than the box and swings round the
+    // outside of the corners instead of meeting them.
+    function sideR(a, dd) { return r + (a * a + dd * dd) / (2 * dd); }
+    var dh = Math.min(d, ah * 0.5), dv = Math.min(d, av * 0.5);
+    var Rh = sideR(ah, dh), Rv = sideR(av, dv);
+
+    // centre, radius; corners first so a side can find the two it touches
+    var TL = { x: x0 + r, y: y0 + r, R: r }, TR = { x: x1 - r, y: y0 + r, R: r };
+    var BR = { x: x1 - r, y: y1 - r, R: r }, BL = { x: x0 + r, y: y1 - r, R: r };
+    var T = { x: cx, y: y0 - dh + Rh, R: Rh }, B = { x: cx, y: y1 + dh - Rh, R: Rh };
+    var L = { x: x0 - dv + Rv, y: cy, R: Rv }, Rt = { x: x1 + dv - Rv, y: cy, R: Rv };
+
+    // The corner circle sits inside the side circle and touches it from within,
+    // so the point they share is out along the line between their centres.
+    function touch(big, small) {
+      var dx = small.x - big.x, dy = small.y - big.y;
+      var m = Math.hypot(dx, dy) || 1;
+      return { x: big.x + dx / m * big.R, y: big.y + dy / m * big.R };
+    }
+    function ang(c, p) { return Math.atan2(p.y - c.y, p.x - c.x); }
+
+    // Clockwise on screen, which is the direction every other outline here is
+    // wound in. Each arc runs from where it met the last circle to where it
+    // meets the next.
+    var seq = [
+      [T, touch(T, TL), touch(T, TR)], [TR, touch(T, TR), touch(Rt, TR)],
+      [Rt, touch(Rt, TR), touch(Rt, BR)], [BR, touch(Rt, BR), touch(B, BR)],
+      [B, touch(B, BR), touch(B, BL)], [BL, touch(B, BL), touch(L, BL)],
+      [L, touch(L, BL), touch(L, TL)], [TL, touch(L, TL), touch(T, TL)]
+    ];
+
+    var nodes = [];
+    seq.forEach(function (arc) {
+      var c = arc[0], a0 = ang(c, arc[1]), a1 = ang(c, arc[2]);
+      // Clockwise, so bring the sweep into (0, 2pi) - but every arc of a convex
+      // ring of eight turns well under half a circle, and the eight together
+      // turn one. So a sweep that lands past half is not a long way round: it
+      // is a hair short of nothing that rounding pushed below zero, and taking
+      // the whole turn back leaves it the hair it was.
+      var sweep = a1 - a0;
+      while (sweep <= 0) sweep += TAU;
+      if (sweep > Math.PI) sweep -= TAU;
+      var steps = Math.max(1, Math.ceil(Math.abs(sweep) / (Math.PI / 2)));
+      var step = sweep / steps;
+      var k = (4 / 3) * Math.tan(step / 4) * c.R;
+      for (var i = 0; i <= steps; i++) {
+        var a = a0 + step * i;
+        var px = c.x + c.R * Math.cos(a), py = c.y + c.R * Math.sin(a);
+        var tx = -Math.sin(a) * k, ty = Math.cos(a) * k;
+        // The last point of one arc and the first of the next are the same
+        // place with the same tangent, so keep one and let it carry both halves.
+        if (i === 0 && nodes.length) {
+          var prev = nodes[nodes.length - 1];
+          prev.ox = px + tx; prev.oy = py + ty;
+          continue;
+        }
+        nodes.push({ x: px, y: py, ix: px - tx, iy: py - ty,
+                     ox: px + tx, oy: py + ty, linked: true });
+      }
+    });
+
+    // The ring closes on itself: the very last point is the very first.
+    var last = nodes.pop();
+    nodes[0].ix = last.ix; nodes[0].iy = last.iy;
+    return nodes;
   }
 
   function angularKnots(x0, y0, x1, y1, c) {
@@ -1891,11 +1996,13 @@
     // slider stops rather than being clamped there without saying so.
     roundedRect: { label: '둥근사각형',
                    params: [
-                     { key: 'radius', label: '모서리 R', min: 0, max: 50, step: 1, def: 18, unit: '%' }
+                     { key: 'radius', label: '모서리 R', min: 0, max: 50, step: 1, def: 18, unit: '%' },
+                     { key: 'bulge',  label: '변 부풀림', min: 0, max: 20, step: 1, def: 0, unit: '%' }
                    ],
                    build: function (b) {
+                     var p = paramsOf('roundedRect'), s = Math.min(b.w, b.h);
                      return roundedRectKnots(b.x0, b.y0, b.x1, b.y1,
-                       Math.min(b.w, b.h) * (paramsOf('roundedRect').radius / 100));
+                       s * (p.radius / 100), s * (p.bulge / 100));
                    } },
     pill:        { label: '알약형',      build: function (b) { return roundedRectKnots(b.x0, b.y0, b.x1, b.y1, b.h / 2); } },
     angular:     { label: '각진 상자',   build: function (b) { return angularKnots(b.x0, b.y0, b.x1, b.y1, Math.min(b.w, b.h) * 0.22); } },
