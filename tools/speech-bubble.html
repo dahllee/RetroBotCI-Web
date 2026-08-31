@@ -1885,7 +1885,18 @@
                    ],
                    build: function (b) { return duoPillKnots(b, paramsOf('duopill')); } },
     rect:        { label: '사각형',      build: function (b) { return rectKnots(b.x0, b.y0, b.x1, b.y1); } },
-    roundedRect: { label: '둥근사각형',  build: function (b) { return roundedRectKnots(b.x0, b.y0, b.x1, b.y1, Math.min(b.w, b.h) * 0.18); } },
+    // A share of the short side, not a length in pixels: the same number then
+    // means the same roundness whatever size the box is. At 50 the short side
+    // is a half-circle at each end, which is the pill - so that is where the
+    // slider stops rather than being clamped there without saying so.
+    roundedRect: { label: '둥근사각형',
+                   params: [
+                     { key: 'radius', label: '모서리 R', min: 0, max: 50, step: 1, def: 18, unit: '%' }
+                   ],
+                   build: function (b) {
+                     return roundedRectKnots(b.x0, b.y0, b.x1, b.y1,
+                       Math.min(b.w, b.h) * (paramsOf('roundedRect').radius / 100));
+                   } },
     pill:        { label: '알약형',      build: function (b) { return roundedRectKnots(b.x0, b.y0, b.x1, b.y1, b.h / 2); } },
     angular:     { label: '각진 상자',   build: function (b) { return angularKnots(b.x0, b.y0, b.x1, b.y1, Math.min(b.w, b.h) * 0.22); } },
     // A sliver's point is a couple of degrees across, and the mitre limit turns
