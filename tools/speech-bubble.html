@@ -1342,12 +1342,15 @@
             ry * (s < 0 ? -1 : 1) * Math.pow(Math.abs(s), e)];
   }
 
-  function cloudKnots(cx, cy, rx, ry, bumps, seed, damp) {
+  function cloudKnots(cx, cy, rx, ry, bumps, seed, damp, opts) {
+    opts = opts || {};
     var n = 2;
     var rand = rng(seed), i;
-    var sizeVar = CLOUD.sizeVar * damp;
+    // The damping still has the last word on both: it is what the build-check-
+    // retry has to pull on when an outline knots itself.
+    var sizeVar = (opts.sizeVar == null ? CLOUD.sizeVar : opts.sizeVar) * damp;
     var radial = CLOUD.radial * damp;
-    var puff = CLOUD.puff * (0.55 + 0.45 * damp);
+    var puff = (opts.puff == null ? CLOUD.puff : opts.puff) * (0.55 + 0.45 * damp);
 
     // arc-length table around the ellipse
     var N = 1200, table = [{ t: 0, s: 0 }], total = 0, prev = superPoint(rx, ry, 0, n);
@@ -2048,7 +2051,23 @@
                        s * (p.chamfer / 100), s * (p.barb / 100), s * (p.width / 100) / 2);
                    } },
     polygon:     { label: '다각형',      seeded: true, damped: true, count: { min: 5, max: 16, def: 7, label: '변 개수' }, vary: { def: 45, label: '변 길이 편차' }, build: function (b, d) { return polygonKnots(b.cx, b.cy, b.rx, b.ry, count('polygon'), varyOf('polygon') * (d == null ? 1 : d), state.seed); } },
-    thought:     { label: '생각',        seeded: true, damped: true, softJoin: true, count: { min: 6, max: 24, def: 12, label: '봉우리 개수' }, build: function (b, d) { return cloudKnots(b.cx, b.cy, b.rx * 0.84, b.ry * 0.80, count('thought'), state.seed, d); } },
+    thought:     { label: '생각', seeded: true, damped: true, softJoin: true,
+                   count: { min: 6, max: 24, def: 12, label: '봉우리 개수' },
+                   params: [
+                     // How far each puff bulges off the chord between its two
+                     // valleys, read the other way round: a puff that bulges by
+                     // little of its own width is a flattened one. The defaults
+                     // land on what the two were fixed at before.
+                     { key: 'flatten', label: '봉우리 눌림',      min: 0, max: 100, step: 1, def: 40, unit: '%' },
+                     { key: 'vary',    label: '봉우리 크기 편차', min: 0, max: 150, step: 5, def: 115, unit: '%' }
+                   ],
+                   build: function (b, d) {
+                     var p = paramsOf('thought');
+                     return cloudKnots(b.cx, b.cy, b.rx * 0.84, b.ry * 0.80, count('thought'), state.seed, d, {
+                       puff: 0.9 - (p.flatten / 100) * 0.7,
+                       sizeVar: p.vary / 100
+                     });
+                   } },
     // The cloud's machinery with the puffs turned right down and the base curve
     // squared off: an outline that wanders rather than billows.
     wavy:        { label: '물결',        seeded: true, damped: true, softJoin: true,
