@@ -139,7 +139,31 @@
       padding-top: 15px;      /* centres on the first row of buttons, not above it */
       white-space: nowrap;
     }
-    .picker .chips { flex: 1 1 auto; min-width: 0; }
+    /* The shape row is sixteen buttons long and has to be free to give way and
+       wrap; only the tail's two hold their width, so the sliders beside them
+       take whatever is left rather than the buttons taking it. */
+    .picker .chips { flex: 0 1 auto; min-width: 0; }
+    .picker #tails { flex: 0 0 auto; }
+
+    /* The tail's two numbers sit beside its buttons rather than across the
+       panel: they say nothing until there is a tail, and everything about it
+       once there is. */
+    .inline-sliders {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      flex: 1 1 auto;
+      min-width: 0;
+      padding-top: 12px;
+    }
+    .inline-sliders > label {
+      font-size: 11px;
+      color: #888;
+      white-space: nowrap;
+      margin: 0;
+      letter-spacing: 0.04em;
+    }
+    .inline-sliders > input[type=range] { flex: 1 1 0; min-width: 60px; }
 
     .chips { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
     .chips.tails { grid-template-columns: repeat(3, 1fr); }
@@ -159,6 +183,8 @@
       text-align: center;
     }
     .chip:hover { border-color: #333; color: #ccc; }
+    .chip:disabled { opacity: 0.35; cursor: not-allowed; }
+    .chip:disabled:hover { border-color: #1e1e1e; color: #888; }
     .chip[aria-pressed="true"] { border-color: #7eb8b0; color: #fff; background: rgba(126,184,176,0.12); }
 
     input[type=range] { width: 100%; accent-color: #7eb8b0; display: block; }
@@ -284,8 +310,14 @@
     </div>
 
     <div class="field">
-      <label>꼬리 방향</label>
+      <label>꼬리</label>
       <div class="chips row" id="tails"></div>
+      <div class="inline-sliders" id="tail-inline">
+        <label for="tailang">각도 <span class="val" id="tailangv">220</span>&deg;</label>
+        <input type="range" id="tailang" min="0" max="359" step="1" value="220">
+        <label for="tailsize">크기 <span class="val" id="tailsizev">100</span>%</label>
+        <input type="range" id="tailsize" min="20" max="200" step="5" value="100">
+      </div>
     </div>
 
     <div class="field">
@@ -442,19 +474,15 @@
 
   // ══ Tail ══════════════════════════════════════════════
 
-  var TAIL_ANGLE = {
-    'bottom-left':  Math.PI * 0.72,
-    'bottom-right': Math.PI * 0.28,
-    'top-left':     Math.PI * 1.28,
-    'top-right':    Math.PI * 1.72,
-    'left':         Math.PI,
-    'right':        0
-  };
-  var TAIL_LABEL = {
-    'bottom-left': '좌하', 'bottom-right': '우하',
-    'top-left': '좌상', 'top-right': '우상',
-    'left': '좌', 'right': '우'
-  };
+  // The tail's direction is a bearing from the centre, in radians, and null
+  // when there is no tail. It used to be one of six names looked up in a table;
+  // a slider hands the same number straight over. Nothing downstream of the
+  // angle changed - the handles that let a tail be curved in Photoshop, and the
+  // wavy bubble's hollow sides, are worked out after this and do not care where
+  // the number came from.
+  //
+  // Null and not zero for "no tail": zero is a direction, and pointing right is
+  // not the same as pointing nowhere.
 
   // Where does a ray from the centre at `angle` cross the outline?
   function rayHit(segs, cx, cy, angle) {
@@ -500,33 +528,8 @@
   function spliceTail(knots, cx, cy, dir, opts, scale) {
     opts = opts || {};
     var width = opts.width || 0.22, length = opts.length || 0.45;
-    var angle = TAIL_ANGLE[dir];
-
-    // On a cloud the tail grows out of a dip between two puffs, never out of
-    // the middle of one. The valleys are exactly the knots, so nudge the tail
-    // round to whichever one lies closest to the requested direction.
-    if (opts.snapToValley) {
-      // On a cloud every knot is a valley; on a burst they alternate spike,
-      // valley, spike, so only every other one is a candidate.
-      var step = opts.valleyEvery || 1;
-      var best = null;
-      for (var vi = opts.valleyOffset || 0; vi < knots.length; vi += step) {
-        var va = Math.atan2(knots[vi].y - cy, knots[vi].x - cx);
-        var diff = Math.abs(((va - angle + Math.PI) % TAU + TAU) % TAU - Math.PI);
-        if (!best || diff < best.diff) {
-          best = { diff: diff, angle: va,
-                   r: Math.hypot(knots[vi].x - cx, knots[vi].y - cy) };
-        }
-      }
-      if (best) {
-        angle = best.angle;
-        // The tail belongs to the bubble, not to a puff, so fix its base width
-        // against the bubble and convert to an angle at the point it attaches.
-        // Adding puffs then leaves the tail exactly as it was.
-        var basePx = (opts.widthFactor || 0.30) * (scale || best.r);
-        width = 2 * Math.atan((basePx / 2) / Math.max(1, best.r));
-      }
-    }
+    var size = tailScale();
+    var angle = dir;
 
     var segs = knotsToSegments(knots);
 
@@ -544,12 +547,16 @@
     // then a fixed length of outline wherever it attaches, and the tip stands
     // off it by a fixed amount.
     var w1 = width / 2, w2 = width / 2, edge = null;
-    if (opts.fromScale && scale) {
+    // Sized in pixels off the bubble rather than as an angle at its centre.
+    // An angle covers more outline where the bubble reaches further, so the
+    // same tail came out three quarters wider pointing along a flat bubble than
+    // across it. The duo shapes were already doing this for their own reasons.
+    if (scale) {
       var mid = rayHit(segs, cx, cy, angle);
       if (mid) {
         edge = mid.k;
         var p0x = cx + Math.cos(angle) * mid.k, p0y = cy + Math.sin(angle) * mid.k;
-        var half = (opts.widthFactor || 0.28) * scale / 2;
+        var half = (opts.widthFactor || 0.28) * size * scale / 2;
         var openTo = function (sign) {
           var lo = 0, hi = Math.PI / 2;
           for (var i = 0; i < 32; i++) {
@@ -577,8 +584,8 @@
     // Clear whichever edge sticks out further, then stand off by a fixed amount
     // rather than by a share of the distance already travelled.
     var far = Math.max(h1.k, h2.k, edge == null ? 0 : edge);
-    var reach = opts.fromScale && scale
-      ? far + (opts.lengthFactor || 0.62) * scale
+    var reach = scale
+      ? far + (opts.lengthFactor || 0.62) * size * scale
       : far * (1 + length);
     var out = segmentsToKnots(kept);
     var last = kept[kept.length - 1];
@@ -654,7 +661,7 @@
   // odd knots. Needed before the outline is final, so the shape can be rebuilt
   // with that one spike held at its nominal size.
   function nearestSpike(knots, cx, cy, dir) {
-    var angle = TAIL_ANGLE[dir], best = null;
+    var angle = dir, best = null;
     for (var i = 1; i < knots.length; i += 2) {
       var a = Math.atan2(knots[i].y - cy, knots[i].x - cx);
       var d = Math.abs(((a - angle + Math.PI) % TAU + TAU) % TAU - Math.PI);
@@ -668,7 +675,7 @@
   // slider: the tail grew while its base stayed put, so its point kept
   // narrowing until the mitre limit chopped it off.
   function stretchSpike(knots, cx, cy, dir, length, idx, radial, minTip) {
-    var angle = TAIL_ANGLE[dir];
+    var angle = dir;
     var best = { i: idx == null || idx < 0 ? nearestSpike(knots, cx, cy, dir) : idx };
     if (best.i < 0) return knots;
 
@@ -937,6 +944,41 @@
     };
   }
 
+  // A rounded box is everything within r of the rectangle its corner centres
+  // make, the way a pill is everything within r of a segment - the same test
+  // with a rectangle in place of the line, so it stays a clamp and a distance.
+  // Which is why this one is not offered a bulge: the moment the sides become
+  // arcs there is no clamp to make, and the fusing below asks this question
+  // tens of thousands of times for every draw.
+  function roundedRectShape(cx, cy, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    var hx = w / 2 - r, hy = h / 2 - r;   // half the core rectangle
+    function reach(x, y) {
+      var dx = Math.abs(x - cx) - hx, dy = Math.abs(y - cy) - hy;
+      return [dx > 0 ? dx : 0, dy > 0 ? dy : 0];
+    }
+    return {
+      knots: roundedRectKnots(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2, r),
+      area: w * h,
+      inside: function (x, y) {
+        var d = reach(x, y);
+        return d[0] * d[0] + d[1] * d[1] < r * r;
+      },
+      // Straight out from the core rectangle: square to the sides along the
+      // flats, fanning only at the corners. Dead centre there is no direction
+      // to give, so fall back to the ray from the middle.
+      normal: function (x, y) {
+        var sx = x < cx ? -1 : 1, sy = y < cy ? -1 : 1;
+        var d = reach(x, y);
+        var nx = d[0] * sx, ny = d[1] * sy, nl = Math.hypot(nx, ny);
+        if (nl < 1e-9) {
+          nx = x - cx; ny = y - cy; nl = Math.hypot(nx, ny) || 1;
+        }
+        return [nx / nl, ny / nl];
+      }
+    };
+  }
+
   function fuse(s1, s2) {
     var out = unionOutlines(outlineOf(s1.knots, s1.inside),
                             outlineOf(s2.knots, s2.inside));
@@ -1039,6 +1081,19 @@
     var n = main.normal(base[0], base[1]);
     return duoBuild(main, base, n[0], n[1], p.gap, function (x, y) {
       return ellipseShape(x, y, p.w2 / 2, p.h2 / 2);
+    });
+  }
+
+  // The corner radius is one setting for both boxes rather than one each: two
+  // lobes of the same bubble reading as different roundnesses looks like a
+  // mistake, not a choice.
+  function duoRectKnots(b, p) {
+    var r = Math.min(b.w, b.h) * (p.radius / 100);
+    var main = roundedRectShape(b.cx, b.cy, b.w, b.h, r);
+    var base = outwardHit(main, b.cx, b.cy, duoAngle(p.pos), Math.hypot(b.rx, b.ry) + 1);
+    var n = main.normal(base[0], base[1]);
+    return duoBuild(main, base, n[0], n[1], p.gap, function (x, y) {
+      return roundedRectShape(x, y, p.w2, p.h2, Math.min(p.w2, p.h2) * (p.radius / 100));
     });
   }
 
@@ -1515,18 +1570,43 @@
 
     var wrap = function (a) { return ((a % TAU) + TAU) % TAU; };
 
+    // Where along the perimeter the tail points. Sharing the outline out from
+    // there rather than from a fixed place on the base curve is what makes the
+    // waves turn with the tail instead of sliding under it: the crest the tail
+    // grows from stays the same crest at every angle. The burst shapes have
+    // always done this - they lay their tail spike first and fill the rest of
+    // the ring behind it.
+    var start = 0;
+    if (opts.phase != null) {
+      var want0 = wrap(opts.phase), bestGap = Infinity;
+      for (i = 0; i < table.length; i++) {
+        var q = pointAt(table[i].t);
+        var gap = Math.abs(wrap(Math.atan2(q[1] - cy, q[0] - cx) - want0 + Math.PI) - Math.PI);
+        if (gap < bestGap) { bestGap = gap; start = table[i].s; }
+      }
+    }
+
+    // Arc length to parameter. Walking an index forward only works while the
+    // targets rise; starting part way round they wrap, so search each one.
+    function tAtLength(sv) {
+      var v = sv % total; if (v < 0) v += total;
+      var lo = 0, hi = table.length - 1;
+      while (hi - lo > 1) {
+        var mid = (lo + hi) >> 1;
+        if (table[mid].s <= v) lo = mid; else hi = mid;
+      }
+      return table[lo].t;
+    }
+
     function pass(M) {
       var r = rng(seed), j;
       var shares = [], jit = [], sum = 0;
       for (j = 0; j < M; j++) { var sh = 1 + sizeVar * (r() * 2 - 1) * 0.5; shares.push(sh); sum += sh; }
       for (j = 0; j < M; j++) jit.push(r() * 2 - 1);
 
-      var ts = [], acc = 0, k = 0;
+      var ts = [], acc = 0;
       for (j = 0; j < M; j++) {
-        var want = (acc / sum) * total;
-        while (k < table.length - 1 && table[k + 1].s < want) k++;
-        while (k > 0 && table[k].s > want) k--;
-        ts.push(table[k].t);
+        ts.push(tAtLength(start + (acc / sum) * total));
         acc += shares[j];
       }
 
@@ -1775,13 +1855,13 @@
     var nominal = Math.hypot(e1[0] - e0[0], e1[1] - e0[1]);
 
     var fs, ref;
-    if (!tailDir) {          // '' means no tail, not just null
+    if (tailDir == null) {
       fs = evenChordAngles(coreRx, coreRy, spikes, 0, roll(spikes));
       ref = 0;                                  // fall back to the mean below
     } else {
       // Parametric angle that points the way the tail should go. On an ellipse
       // this is not the geometric angle.
-      var th = TAIL_ANGLE[tailDir];
+      var th = tailDir;
       var ft = Math.atan2(Math.sin(th) / coreRy, Math.cos(th) / coreRx);
 
       // The tail's base is set from the bubble, not from how many spikes there
@@ -1790,7 +1870,7 @@
       // keeps getting keener - and a keen enough point either gets chopped flat
       // by the mitre limit or grows a long thin spur past the end of the fill.
       // Fixed base, fixed length, so the point never changes.
-      var tailBase = Math.min(coreRx, coreRy) * (baseF || TAIL_BASE);
+      var tailBase = Math.min(coreRx, coreRy) * (baseF || TAIL_BASE) * tailScale();
 
       // Half-width in parameter that spans it. The chord across a symmetric
       // pair works out to 2*sin(half)*K, so solve it rather than searching - it
@@ -1885,7 +1965,7 @@
       // the tail keeps the nominal height whatever its base came out as
       // weight: the smallest spike responds least to the slider, the largest most
       var wt = span < 1e-6 ? 1 : SPIKE_FLOOR_W + (1 - SPIKE_FLOOR_W) * (hf[i] - fmin) / span;
-      var hgt = (tailDir && i === 0)
+      var hgt = (tailDir != null && i === 0)
         ? spike
         : (lowH + Math.max(0, spike - lowH) * wt) * hf[i];
 
@@ -1896,7 +1976,7 @@
       // Standing this one back down until its point is inside the limit keeps a
       // point on every spike, at the cost of a little height on a few of them.
       // The tail is exempt: it is re-sited afterwards anyway.
-      if (minTip && !(tailDir && i === 0)) {
+      if (minTip && !(tailDir != null && i === 0)) {
         var tb = tans[(i + 1) % spikes];
         if (tipAngle(a, b, mx, my, nx, ny, hgt, tans[i], tb) < minTip) {
           var lo = 0, hi = hgt;
@@ -1972,7 +2052,6 @@
                    sizeLabel: ['타원1 가로', '타원1 세로'],
                    // measured against the main ellipse, so parking the satellite
                    // under the tail does not inflate it
-                   tail: { fromScale: true },
                    params: [
                      { key: 'w2',  label: '타원2 가로', min: 40, max: 1200, step: 10, def: 300, unit: ' px' },
                      { key: 'h2',  label: '타원2 세로', min: 40, max: 900, step: 10, def: 180, unit: ' px' },
@@ -1983,7 +2062,6 @@
                    build: function (b) { return duoKnots(b, paramsOf('duo')); } },
     duopill:     { label: '이중 알약',
                    sizeLabel: ['알약1 가로', '알약1 세로'],
-                   tail: { fromScale: true },
                    params: [
                      { key: 'w2',  label: '알약2 가로', min: 40, max: 1200, step: 10, def: 300, unit: ' px' },
                      { key: 'h2',  label: '알약2 세로', min: 40, max: 900, step: 10, def: 180, unit: ' px' },
@@ -1992,12 +2070,25 @@
                        unit: ' px', cap: function () { return duoReach; } }
                    ],
                    build: function (b) { return duoPillKnots(b, paramsOf('duopill')); } },
-    rect:        { label: '사각형',      build: function (b) { return rectKnots(b.x0, b.y0, b.x1, b.y1); } },
+    duorect:     { label: '이중 둥근 사각',
+                   sizeLabel: ['사각형1 가로', '사각형1 세로'],
+                   params: [
+                     { key: 'w2',     label: '사각형2 가로', min: 40, max: 1200, step: 10, def: 300, unit: ' px' },
+                     { key: 'h2',     label: '사각형2 세로', min: 40, max: 900, step: 10, def: 180, unit: ' px' },
+                     { key: 'pos',    label: '사각형2 위치', min: 0, max: 359, def: 45, unit: '°' },
+                     { key: 'gap',    label: '사각형2 거리', min: 0, max: 400, step: 5, def: 60,
+                       unit: ' px', cap: function () { return duoReach; } },
+                     // Each box takes it as a share of its own short side, so
+                     // the small one is not left with the big one's corners.
+                     { key: 'radius', label: '모서리 R', min: 0, max: 50, step: 1, def: 18, unit: '%' }
+                   ],
+                   build: function (b) { return duoRectKnots(b, paramsOf('duorect')); } },
+    rect:        { label: '사각',      build: function (b) { return rectKnots(b.x0, b.y0, b.x1, b.y1); } },
     // A share of the short side, not a length in pixels: the same number then
     // means the same roundness whatever size the box is. At 50 the short side
     // is a half-circle at each end, which is the pill - so that is where the
     // slider stops rather than being clamped there without saying so.
-    roundedRect: { label: '둥근사각형',
+    roundedRect: { label: '둥근 사각',
                    params: [
                      { key: 'radius', label: '모서리 R', min: 0, max: 50, step: 1, def: 18, unit: '%' },
                      { key: 'bulge',  label: '변 부풀림', min: 0, max: 20, step: 1, def: 0, unit: '%' }
@@ -2007,12 +2098,12 @@
                      return roundedRectKnots(b.x0, b.y0, b.x1, b.y1,
                        s * (p.radius / 100), s * (p.bulge / 100));
                    } },
-    pill:        { label: '알약형',      build: function (b) { return roundedRectKnots(b.x0, b.y0, b.x1, b.y1, b.h / 2); } },
+    pill:        { label: '알약',      build: function (b) { return roundedRectKnots(b.x0, b.y0, b.x1, b.y1, b.h / 2); } },
     angular:     { label: '각진 상자',   build: function (b) { return angularKnots(b.x0, b.y0, b.x1, b.y1, Math.min(b.w, b.h) * 0.22); } },
     // A sliver's point is a couple of degrees across, and the mitre limit turns
     // anything keener than about 10 into a flat cut. At the usual 12 every one
     // of these ends is chopped square.
-    flash:       { label: '플래시', multi: true, seeded: true, defaultTail: '', miterLimit: 90,
+    flash:       { label: '플래시', multi: true, seeded: true, noTail: true, noDash: true, miterLimit: 90,
                    fillFromStroke: true, defaultStroke: 0,
                    // Enough that the slivers close ranks at their bases and the
                    // edge of the middle stops being a place you can point at.
@@ -2036,7 +2127,7 @@
                        waist: p.waist / 100
                      });
                    } },
-    barbed:      { label: '방송', defaultTail: '',
+    barbed:      { label: '방송', noTail: true, noDash: true,
                    params: [
                      { key: 'chamfer', label: '모서리 깎기', min: 5, max: 40, step: 1, def: 13, unit: '%' },
                      { key: 'barb',    label: '가시 길이',   min: 0, max: 30, step: 1, def: 14, unit: '%' },
@@ -2051,7 +2142,7 @@
                        s * (p.chamfer / 100), s * (p.barb / 100), s * (p.width / 100) / 2);
                    } },
     polygon:     { label: '다각형',      seeded: true, damped: true, count: { min: 5, max: 16, def: 7, label: '변 개수' }, vary: { def: 45, label: '변 길이 편차' }, build: function (b, d) { return polygonKnots(b.cx, b.cy, b.rx, b.ry, count('polygon'), varyOf('polygon') * (d == null ? 1 : d), state.seed); } },
-    thought:     { label: '생각', seeded: true, damped: true, softJoin: true,
+    thought:     { label: '생각', seeded: true, damped: true, softJoin: true, noDash: true,
                    count: { min: 6, max: 24, def: 12, label: '봉우리 개수' },
                    params: [
                      // How far each puff bulges off the chord between its two
@@ -2083,7 +2174,7 @@
                      { key: 'wavelength', label: '물결 파장', min: 30, max: 240, step: 5, def: 130, unit: ' px' },
                      { key: 'corner',     label: '모서리',    min: 0, max: 100, def: 26, unit: '%' }
                    ],
-                   build: function (b, d) {
+                   build: function (b, d, tailDir) {
                      var p = paramsOf('wavy');
                      return waveKnots(b.cx, b.cy, b.rx, b.ry, state.seed, d, {
                        n: 2 + (p.corner / 100) * 3,
@@ -2095,16 +2186,16 @@
     // Burst outlines already bristle with spikes, so their tail reaches
     // further out to read as a tail rather than as another spike.
     // burstKnots emits valley, spike, valley, spike... so the valleys are even.
-    spiky:       { label: '뾰족(외침)',  count: { min: 14, max: 20, def: 16, label: '뾰족 개수' }, height: { min: 10, max: 60, def: 26, label: '뾰족 높이' }, core: 0.74, stretchTail: { length: 0.88 }, tailBase: 0.385, build: function (b, d, tailDir) { return burstKnots(b.cx, b.cy, b.rx, b.ry, count('spiky'), SHAPES.spiky.core, heightOf('spiky'), 0, 0, tailDir, 1, false, SHAPES.spiky.tailBase); } },
-    comic:       { label: '만화 외침',   seeded: true, damped: true, count: { min: 14, max: 28, def: 18, label: '뾰족 개수' }, vary: { def: 65, label: '뾰족 크기 편차' }, height: { min: 10, max: 60, def: 38, label: '뾰족 높이' }, core: 0.62, stretchTail: { length: 1.22, radial: true }, tailBase: 0.735, build: function (b, d, tailDir) { return burstKnots(b.cx, b.cy, b.rx, b.ry, count('comic'), SHAPES.comic.core, heightOf('comic'), varyOf('comic') * (d == null ? 1 : d), state.seed, tailDir, d, true, SHAPES.comic.tailBase); } },
+    spiky:       { label: '뾰족',  count: { min: 14, max: 20, def: 16, label: '뾰족 개수' }, height: { min: 10, max: 60, def: 26, label: '뾰족 높이' }, core: 0.74, stretchTail: { length: 0.88 }, tailBase: 0.385, build: function (b, d, tailDir) { return burstKnots(b.cx, b.cy, b.rx, b.ry, count('spiky'), SHAPES.spiky.core, heightOf('spiky'), 0, 0, tailDir, 1, false, SHAPES.spiky.tailBase); } },
+    comic:       { label: '외침',   seeded: true, damped: true, count: { min: 14, max: 28, def: 18, label: '뾰족 개수' }, vary: { def: 65, label: '뾰족 크기 편차' }, height: { min: 10, max: 60, def: 38, label: '뾰족 높이' }, core: 0.62, stretchTail: { length: 1.22, radial: true }, tailBase: 0.735, build: function (b, d, tailDir) { return burstKnots(b.cx, b.cy, b.rx, b.ry, count('comic'), SHAPES.comic.core, heightOf('comic'), varyOf('comic') * (d == null ? 1 : d), state.seed, tailDir, d, true, SHAPES.comic.tailBase); } },
     curvy:       { label: '곡선 외침',   seeded: true, damped: true, miterLimit: 60, count: { min: 9, max: 28, def: 18, label: '뾰족 개수' }, vary: { def: 65, label: '뾰족 크기 편차' }, height: { min: 10, max: 60, def: 38, floorPerSpike: 240, label: '뾰족 높이' }, core: 0.62, stretchTail: { length: 1.22, radial: true }, tailBase: 0.735, build: function (b, d, tailDir) { return burstKnots(b.cx, b.cy, b.rx, b.ry, count('curvy'), SHAPES.curvy.core, heightOf('curvy'), varyOf('curvy') * (d == null ? 1 : d), state.seed, tailDir, d, true, SHAPES.curvy.tailBase, 0.42 * (d == null ? 1 : d), tipFloor(SHAPES.curvy.miterLimit), true); } }
   };
 
   // Thought bubbles trail shrinking puffs instead of a spike.
   function thoughtTail(cx, cy, rx, ry, dir, body) {
-    var angle = TAIL_ANGLE[dir];
+    var angle = dir;
     var ca = Math.cos(angle), sa = Math.sin(angle);
-    var unit = Math.min(rx, ry);
+    var unit = Math.min(rx, ry) * tailScale();
 
     // Where the body's outline actually is. The base ellipse is not it - the
     // puffs bulge well past it by an amount that varies with the seed, so
@@ -2153,8 +2244,8 @@
       // separate slivers around a clear middle, and its builder hands back both
       // sets. `core` is filled and never stroked; `subpaths` is everything the
       // stroke colour applies to.
-      if (shape.multi) return { subpaths: body.lines, core: body.core, dashed: state.dashed };
-      if (!tailDir) return { subpaths: [body], dashed: state.dashed };
+      if (shape.multi) return { subpaths: body.lines, core: body.core, dashed: dashedOn() };
+      if (tailDir == null) return { subpaths: [body], dashed: dashedOn() };
       if (shape.stretchTail) {
         // Find which spike the tail will grow from, then build the shape again
         // with that one held at its nominal size. Otherwise the tail inherits
@@ -2164,21 +2255,21 @@
         // already sitting at index 1 at a fixed place and size.
         return {
           subpaths: [stretchSpike(body, b.cx, b.cy, tailDir,
-                                  Math.min(b.rx, b.ry) * shape.stretchTail.length, 1,
+                                  Math.min(b.rx, b.ry) * shape.stretchTail.length * tailScale(), 1,
                                   shape.stretchTail.radial,
                                   shape.miterLimit ? tipFloor(shape.miterLimit) : 0)],
-          dashed: state.dashed
+          dashed: dashedOn()
         };
       }
       if (key === 'thought') {
         return {
           subpaths: [body].concat(thoughtTail(b.cx, b.cy, b.rx * 0.84, b.ry * 0.80, tailDir, body)),
-          dashed: state.dashed
+          dashed: dashedOn()
         };
       }
       return {
         subpaths: [spliceTail(body, b.cx, b.cy, tailDir, shape.tail, Math.min(b.rx, b.ry))],
-        dashed: state.dashed
+        dashed: dashedOn()
       };
     }
 
@@ -2187,14 +2278,23 @@
     if (!shape.damped) return assemble(shape.build(b, 1, tailDir), 1);
 
     // A very flat bubble - or one with many puffs - has no room for deep puffs:
-    // opposite sides meet in the middle and knot the outline, which punches
-    // holes under the even-odd fill rule. Splicing the tail can knot it too, so
-    // the check has to run on the finished path, not just the body. Build it,
-    // check it, and back the roughness off only when it actually fails.
+    // opposite sides meet in the middle and knot the outline. Build it, check
+    // it, and back the roughness off only when it actually fails.
+    //
+    // Which half gets checked depends on where the tail comes from. A burst
+    // grows its tail out of one of its own spikes, so the tail is the body and
+    // the finished path is the thing to look at. A spliced tail is grafted onto
+    // a body that was already finished, and if it clips a crest on the way past
+    // the answer is not to flatten every crest on the bubble: that reads as the
+    // waves suddenly going flat at four angles around the ring, and it did.
     function tryAt(d) {
-      var o = assemble(shape.build(b, d, tailDir), d);
-      for (var i = 0; i < o.subpaths.length; i++) {
-        if (selfIntersects(o.subpaths[i])) return null;
+      var body = shape.build(b, d, tailDir);
+      if (!shape.stretchTail && selfIntersects(body)) return null;
+      var o = assemble(body, d);
+      if (shape.stretchTail) {
+        for (var i = 0; i < o.subpaths.length; i++) {
+          if (selfIntersects(o.subpaths[i])) return null;
+        }
       }
       return o;
     }
@@ -2314,13 +2414,16 @@
   var state = { shape: 'ellipse', dashed: false, fill: '#ffffff',
                 stroke: '#000000', w: 560, h: 320, sw: 3, pad: 40,
                 counts: {}, varies: {}, heights: {}, params: {}, tails: {}, sws: {},
+                tailAngle: 220, tailSize: 100,
                 seed: (Math.random() * 0x7fffffff) | 0 };
 
   // each shape remembers its own settings, so switching back and forth keeps them
   Object.keys(SHAPES).forEach(function (k) {
     // A box that is all corners has nowhere for a tail to leave from without
     // eating one, so that shape starts without.
-    state.tails[k] = SHAPES[k].defaultTail == null ? 'bottom-left' : SHAPES[k].defaultTail;
+    // A flash is a scatter of slivers with no outline to splice into, and the
+    // barbed box is all corners; neither takes a tail, so neither is offered one.
+    state.tails[k] = !SHAPES[k].noTail;
     // A flash is filled, not outlined - a stroke round every sliver only
     // thickens it and rounds off the points.
     state.sws[k] = SHAPES[k].defaultStroke == null ? 3 : SHAPES[k].defaultStroke;
@@ -2333,7 +2436,7 @@
   var current = null;   // { subpaths, core, dashed, width, height }
 
   function compose() {
-    var built = buildBubble(state.shape, { x: 0, y: 0, w: state.w, h: state.h }, state.tails[state.shape]);
+    var built = buildBubble(state.shape, { x: 0, y: 0, w: state.w, h: state.h }, tailDir());
     // The middle sits inside the slivers, so it never decides the bounds; it
     // still has to move with them.
     var box = bbox(built.subpaths);
@@ -2428,6 +2531,25 @@
     // this one's is every time the shape changes.
     document.getElementById('sw').value = strokeW();
     document.getElementById('swv').textContent = strokeW();
+    // Nothing to aim if this shape is not wearing a tail.
+    var onChip = document.getElementById('tails').children[1];
+    if (onChip) onChip.disabled = !!shape.noTail;
+    var dashChips = document.getElementById('strokes').children;
+    if (dashChips[1]) {
+      dashChips[1].disabled = !!shape.noDash;
+      // syncChips reads the setting itself, which is still whatever it was;
+      // say plainly which one is in force here instead.
+      if (shape.noDash) {
+        dashChips[0].setAttribute('aria-pressed', 'true');
+        dashChips[1].setAttribute('aria-pressed', 'false');
+      }
+    }
+    var hasTail = !!state.tails[state.shape];
+    document.getElementById('tail-inline').hidden = !hasTail;
+    document.getElementById('tailang').value = state.tailAngle;
+    document.getElementById('tailangv').textContent = state.tailAngle;
+    document.getElementById('tailsize').value = state.tailSize;
+    document.getElementById('tailsizev').textContent = state.tailSize;
     // For most shapes these two are the box the outline fills, so "가로/세로"
     // says it. Where the box is one named part of the shape rather than the
     // whole of it, the shape renames them to say which part.
@@ -2499,7 +2621,7 @@
   // ══ Export ════════════════════════════════════════════
 
   function filename(ext) {
-    var t = state.tails[state.shape];
+    var t = state.tails[state.shape] ? Math.round(state.tailAngle) : '';
     return 'bubble-' + state.shape + (t ? '-' + t : '') + '.' + ext;
   }
 
@@ -2521,6 +2643,25 @@
   }
 
   function strokeW() { return state.sws[state.shape]; }
+
+  // Degrees on the slider, radians for the geometry, and the same zero as the
+  // satellite's position slider so the two read alike: 0 straight up, going
+  // clockwise. Null when this shape is set to have no tail.
+  // One number for every shape and every kind of tail. Each of the three ways
+  // a tail gets made already sizes itself against the short radius, so the
+  // slider is a multiplier on that and needs no per-shape tuning.
+  function tailScale() { return state.tailSize / 100; }
+
+  // The setting stays where the user left it; a shape that has no use for
+  // dashes simply does not read it. Kept whole rather than cleared, so coming
+  // back to a shape that does use them finds it as it was.
+  function dashedOn() {
+    return state.dashed && !SHAPES[state.shape].noDash;
+  }
+
+  function tailDir() {
+    return state.tails[state.shape] ? duoAngle(state.tailAngle) : null;
+  }
 
   function hexToRgb(hex) {
     var h = hex.replace('#', '');
@@ -2689,10 +2830,18 @@
     });
   }
 
+  // The order the buttons are read in, which is a decision about the panel
+  // rather than about the order the shapes happen to be written in below:
+  // the plain ones first, each followed by its double, then the boxes, then
+  // everything that is a texture rather than a container.
+  var SHAPE_ORDER = ['ellipse', 'duo', 'pill', 'duopill', 'rect', 'roundedRect',
+                     'duorect', 'angular', 'polygon', 'wavy', 'thought', 'flash',
+                     'spiky', 'comic', 'curvy', 'barbed'];
+
   buildChips(document.getElementById('shapes'),
-    Object.keys(SHAPES).map(function (k) { return [k, SHAPES[k].label]; }), 'shape', false);
+    SHAPE_ORDER.map(function (k) { return [k, SHAPES[k].label]; }), 'shape', false);
   buildChips(document.getElementById('tails'),
-    Object.keys(TAIL_ANGLE).map(function (k) { return [k, TAIL_LABEL[k]]; }), 'tail', true, true);
+    [[false, '없음'], [true, '있음']], 'tail', false, true);
   // The chips carry their value through as-is, so booleans work like the string
   // keys above. Dashes used to be a shape of their own - an ellipse that was
   // only an ellipse - which meant no other bubble could whisper.
@@ -2725,6 +2874,18 @@
       out.textContent = input.value;
       render();
     });
+  });
+
+  document.getElementById('tailsize').addEventListener('input', function (e) {
+    state.tailSize = Number(e.target.value);
+    document.getElementById('tailsizev').textContent = e.target.value;
+    render();
+  });
+
+  document.getElementById('tailang').addEventListener('input', function (e) {
+    state.tailAngle = Number(e.target.value);
+    document.getElementById('tailangv').textContent = e.target.value;
+    render();
   });
 
   document.getElementById('sw').addEventListener('input', function (e) {
