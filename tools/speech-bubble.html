@@ -1360,8 +1360,12 @@
     // average midpoint, the ellipse buries the inner half of every sliver
     // shorter than average and the burst loses its depth; a shade inside that
     // and the short ones keep a little of theirs.
+    //
+    // None of which holds once the middle fades: it buries nothing, so it is
+    // not measured against the slivers at all and takes its size as given.
     var reachAvg = out.length ? sumReach / out.length : 1;
-    var mid = (inner + (reachAvg - inner) * (opts.coreReach == null ? 0.5 : opts.coreReach)) * 0.95;
+    var mid = opts.coreSize != null ? opts.coreSize
+            : (inner + (reachAvg - inner) * (opts.coreReach == null ? 0.5 : opts.coreReach)) * 0.95;
     return { core: [ellipseKnots(cx, cy, rx * mid, ry * mid)], lines: out };
   }
 
@@ -2133,7 +2137,21 @@
                    params: [
                      { key: 'inner', label: '가운데 크기', min: 10, max: 85, step: 1, def: 62, unit: '%' },
                      { key: 'width', label: '선 굵기',     min: 1, max: 15, step: 1, def: 4, unit: ' px' },
-                     { key: 'waist', label: '굵은 지점',   min: 0, max: 100, step: 1, def: 50, unit: '%' }
+                     { key: 'waist', label: '굵은 지점',   min: 0, max: 100, step: 1, def: 50, unit: '%' },
+                     // The other way to lose the edge of the middle. Packing the
+                     // slivers tight hides it behind them; this one stops there
+                     // being an edge to hide. Nought is the flat middle the
+                     // flash has always had.
+                     { key: 'fade',  label: '가장자리 흐림', min: 0, max: 100, step: 1, def: 0, unit: '%' },
+                     // A flat middle exists to cover the slivers' roots, so it
+                     // is measured from them: out to half their average length.
+                     // A faded one covers nothing, and then how big it is has
+                     // nothing to do with where they start - so it says so
+                     // itself, and only appears once there is a fade to say it
+                     // about. 74 is where the tied version sits at the defaults,
+                     // so turning the fade on does not move it.
+                     { key: 'core',  label: '덩어리 크기', min: 10, max: 100, step: 1, def: 74, unit: '%',
+                       when: function () { return coreFade() > 0; } }
                    ],
                    build: function (b) {
                      var p = paramsOf('flash');
@@ -2142,7 +2160,8 @@
                        inner: p.inner / 100,
                        vary: state.varies.flash / 100,
                        width: p.width,
-                       waist: p.waist / 100
+                       waist: p.waist / 100,
+                       coreSize: p.fade > 0 ? p.core / 100 : null
                      });
                    } },
     barbed:      { label: '방송', noTail: true, noDash: true,
@@ -2392,14 +2411,40 @@
 
   // ══ Painting ══════════════════════════════════════════
 
+  // The middle, either flat to its edge or fading out before it. The mass is an
+  // ellipse and a canvas gradient is a circle, so the circle is stretched by the
+  // transform in force when the fill happens - the path went in beforehand and
+  // is already in device coordinates, so it does not move with it.
+  function paintCore(ctx, knots, o) {
+    pathToCanvas(ctx, knots);
+    var col = o.coreFill || o.fill;
+    if (!(o.coreFade > 0)) { ctx.fillStyle = col; ctx.fill(); return; }
+
+    var b = bbox([knots]);
+    var cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    var rx = b.w / 2 || 1, ry = b.h / 2 || 1;
+    var c = hexToRgb(col), rgb = c.r + ',' + c.g + ',' + c.b;
+    var g = ctx.createRadialGradient(cx, cy, 0, cx, cy, rx);
+    g.addColorStop(0, 'rgba(' + rgb + ',1)');
+    // Flat out to here, and gone by the edge. At 100 per cent the whole of it
+    // is ramp and the middle has no solid part left at all.
+    var solid = 1 - o.coreFade;
+    if (solid > 0) g.addColorStop(solid, 'rgba(' + rgb + ',1)');
+    g.addColorStop(1, 'rgba(' + rgb + ',0)');
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(1, ry / rx);
+    ctx.translate(-cx, -cy);
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.restore();
+  }
+
   function paint(ctx, subpaths, o) {
     // The clear middle goes down first and unstroked, so the slivers land on
     // top of it and the stroke colour never touches it.
-    (o.core || []).forEach(function (knots) {
-      pathToCanvas(ctx, knots);
-      ctx.fillStyle = o.coreFill || o.fill;
-      ctx.fill();
-    });
+    (o.core || []).forEach(function (knots) { paintCore(ctx, knots, o); });
     subpaths.forEach(function (knots) {
       pathToCanvas(ctx, knots);
       ctx.fillStyle = o.fill;
@@ -2534,8 +2579,12 @@
       if (!(SHAPES[k].params || []).length) return;
       var rows = paramRows[k] || buildParams(k);
       rows.forEach(function (r) {
-        r.row.hidden = k !== key;
-        if (k === key) {
+        // A param can also answer to the shape's other params rather than only
+        // to which shape it is. Asked here rather than at build time, so it
+        // re-reads on every render and not just when the shape changes.
+        var mine = k === key;
+        r.row.hidden = !mine || (!!r.cfg.when && !r.cfg.when());
+        if (mine) {
           r.input.value = state.params[k][r.cfg.key];
           r.val.textContent = r.input.value;
         }
@@ -2623,7 +2672,7 @@
     var ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, current.width, current.height);
     paint(ctx, current.subpaths, {
-      core: current.core, coreFill: state.fill,
+      core: current.core, coreFill: state.fill, coreFade: coreFade(),
       fill: fillColor(), stroke: state.stroke,
       strokeWidth: strokeW(), dashed: current.dashed, join: current.join, miter: current.miter
     });
@@ -2662,6 +2711,13 @@
 
   function strokeW() { return state.sws[state.shape]; }
 
+  // How much of the middle is ramp rather than solid colour, 0 to 1. Only a
+  // shape with a middle declares it, so anything else is flat by not asking.
+  function coreFade() {
+    var p = state.params[state.shape];
+    return p && p.fade != null ? p.fade / 100 : 0;
+  }
+
   // Degrees on the slider, radians for the geometry, and the same zero as the
   // satellite's position slider so the two read alike: 0 straight up, going
   // clockwise. Null when this shape is set to have no tail.
@@ -2694,7 +2750,7 @@
       layer.height = current.height;
       var lctx = layer.getContext('2d');
       paint(lctx, current.subpaths, {
-        core: current.core, coreFill: state.fill,
+        core: current.core, coreFill: state.fill, coreFade: coreFade(),
         fill: fillColor(), stroke: state.stroke,
         strokeWidth: strokeW(), dashed: current.dashed, join: current.join, miter: current.miter
       });
@@ -2741,21 +2797,37 @@
         };
       }
 
-      // The clear middle is a second shape layer, under the slivers and with no
-      // stroke of its own. One layer cannot hold two fills, and this one is a
-      // different colour from what surrounds it.
+      // The clear middle is a second layer, under the slivers and with no stroke
+      // of its own. One layer cannot hold two fills, and this one is a different
+      // colour from what surrounds it.
+      //
+      // Flat, it is a shape layer like the slivers. Faded, it has to be pixels:
+      // a shape layer can carry a gradient, but Photoshop gives that gradient an
+      // angle and a scale and no aspect, so its radial is always a circle. The
+      // middle is an ellipse, and on a bubble half again as wide as it is tall
+      // the two part company plainly. Pixels are the one form that says what the
+      // preview says, and a fade has no edge worth dragging an anchor along.
       var children = [layer];
       if (current.core && current.core.length) {
-        children.unshift({
-          name: 'Center',
-          top: 0, left: 0, bottom: current.height, right: current.width,
-          vectorFill: { type: 'color', color: hexToRgb(state.fill) },
-          vectorMask: {
+        var mid = { name: 'Center', top: 0, left: 0, bottom: current.height, right: current.width };
+        if (coreFade() > 0) {
+          var core = document.createElement('canvas');
+          core.width = current.width;
+          core.height = current.height;
+          var cctx = core.getContext('2d');
+          current.core.forEach(function (knots) {
+            paintCore(cctx, knots, { coreFill: state.fill, coreFade: coreFade() });
+          });
+          mid.imageData = cctx.getImageData(0, 0, current.width, current.height);
+        } else {
+          mid.vectorFill = { type: 'color', color: hexToRgb(state.fill) };
+          mid.vectorMask = {
             paths: current.core.map(function (knots) {
               return { open: false, fillRule: 'non-zero', operation: 'combine', knots: pathToPSD(knots) };
             })
-          }
-        });
+          };
+        }
+        children.unshift(mid);
       }
 
       var psd = {
@@ -2765,7 +2837,9 @@
         children: children
       };
       save(new Blob([window.agPsd.writePsd(psd)], { type: 'image/vnd.adobe.photoshop' }), filename('psd'));
-      say('PSD 저장 완료 — 포토샵에서 열면 셰이프 레이어로 편집됩니다.');
+      say(coreFade() > 0
+        ? 'PSD 저장 완료 — 셰이프 레이어로 편집됩니다. 흐려진 가운데 덩어리만 픽셀 레이어입니다.'
+        : 'PSD 저장 완료 — 포토샵에서 열면 셰이프 레이어로 편집됩니다.');
     } catch (e) {
       say('PSD 생성 실패: ' + e.message);
     }
@@ -2773,9 +2847,24 @@
 
   document.getElementById('dl-svg').addEventListener('click', function () {
     var dash = current.dashed ? ' stroke-dasharray="' + (strokeW() * 3) + ' ' + (strokeW() * 2.2) + '"' : '';
+
+    // A gradient measured against each path's own bounding box, which is what
+    // objectBoundingBox means and why nothing here has to know how wide the
+    // middle is: the circle comes out stretched to the ellipse on its own.
+    var fade = coreFade(), defs = '';
+    if (fade > 0) {
+      var solid = r2(1 - fade);
+      defs = '  <defs>\n    <radialGradient id="core-fade">\n' +
+             '      <stop offset="0" stop-color="' + state.fill + '"/>\n' +
+             (solid > 0 ? '      <stop offset="' + solid + '" stop-color="' + state.fill + '"/>\n' : '') +
+             '      <stop offset="1" stop-color="' + state.fill + '" stop-opacity="0"/>\n' +
+             '    </radialGradient>\n  </defs>\n';
+    }
+
     // The middle first, so it sits under the rest, and without a stroke.
     var core = (current.core || []).map(function (knots) {
-      return '  <path d="' + pathToSVG(knots) + '" fill="' + state.fill + '"/>';
+      return '  <path d="' + pathToSVG(knots) + '" fill="' +
+             (fade > 0 ? 'url(#core-fade)' : state.fill) + '"/>';
     });
     var paths = core.concat(current.subpaths.map(function (knots) {
       return '  <path d="' + pathToSVG(knots) + '" fill="' + fillColor() + '"' +
@@ -2784,7 +2873,7 @@
     })).join('\n');
     var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + current.width +
               '" height="' + current.height + '" viewBox="0 0 ' + current.width + ' ' +
-              current.height + '">\n' + paths + '\n</svg>\n';
+              current.height + '">\n' + defs + paths + '\n</svg>\n';
     save(new Blob([svg], { type: 'image/svg+xml' }), filename('svg'));
     say('SVG 저장 완료 — 포토샵에서 열면 래스터로 변환됩니다. 일러스트레이터용입니다.');
   });
